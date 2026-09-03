@@ -5,6 +5,9 @@ from dinner_spinner.domain.inventory_category import InventoryCategory
 from dinner_spinner.domain.recipe import Recipe
 from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
 from dinner_spinner.domain.meal_plan import MealPlan
+from dinner_spinner.domain.acquisition import Acquisition
+from dinner_spinner.domain.consumption import Consumption
+from dinner_spinner.domain.waste import Waste
 
 # UnitSystem is a module, not a class - import the module
 import dinner_spinner.domain.unit_system as UnitSystem
@@ -15,5 +18,8 @@ __all__ = [
     "Recipe",
     "RecipeIngredient",
     "MealPlan",
+    "Acquisition",
+    "Consumption",
+    "Waste",
     "UnitSystem",
 ]

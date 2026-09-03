@@ -497,5 +497,348 @@ def test_mealplan_empty_slot_valid(db_session, unit_system_initialized):
     assert mp.servings == 4
 
 
+def test_mealplan_empty_slot_valid(db_session, unit_system_initialized):
+    """MealPlan with recipe_id = NULL is valid (empty meal slot)."""
+    from dinner_persistence.models import MealPlan
+
+    mp = MealPlan(week_start=20260101, day=0, meal_type="Dinner", recipe_id=None, servings=4)
+    db_session.add(mp)
+    db_session.commit()
+
+    db_session.refresh(mp)
+    assert mp.recipe_id is None
+    assert mp.servings == 4
+
+
+# =============================================================================
+# Slice 2: Inventory Event Tests (Acquisition, Consumption, Waste)
+# =============================================================================
+
+def test_acquisition_table_exists(db_session, unit_system_initialized):
+    """Acquisition table exists with correct columns."""
+    from dinner_persistence.models import Acquisition, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    acq = Acquisition(ingredient_id=ing.id, quantity=100, unit="g", cost=10.50)
+    db_session.add(acq)
+    db_session.commit()
+
+    db_session.refresh(acq)
+    assert acq.id is not None
+    assert acq.ingredient_id == ing.id
+    assert acq.quantity == 100
+    assert acq.unit == "g"
+    assert acq.cost == 10.50
+    assert acq.acquired_at is not None
+
+
+def test_acquisition_quantity_check_constraint(db_session, unit_system_initialized):
+    """Acquisition.quantity > 0 enforced at DB level."""
+    from dinner_persistence.models import Acquisition, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Valid: positive quantity
+    acq = Acquisition(ingredient_id=ing.id, quantity=100, unit="g", cost=5.00)
+    db_session.add(acq)
+    db_session.commit()
+
+    # Invalid: zero quantity
+    acq = Acquisition(ingredient_id=ing.id, quantity=0, unit="g", cost=5.00)
+    db_session.add(acq)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+    # Invalid: negative quantity
+    acq = Acquisition(ingredient_id=ing.id, quantity=-1, unit="g", cost=5.00)
+    db_session.add(acq)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_acquisition_cost_check_constraint(db_session, unit_system_initialized):
+    """Acquisition.cost >= 0 enforced at DB level."""
+    from dinner_persistence.models import Acquisition, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Valid: zero cost
+    acq = Acquisition(ingredient_id=ing.id, quantity=100, unit="g", cost=0)
+    db_session.add(acq)
+    db_session.commit()
+
+    # Invalid: negative cost
+    acq = Acquisition(ingredient_id=ing.id, quantity=100, unit="g", cost=-1.00)
+    db_session.add(acq)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_acquisition_fk_restrict(db_session, unit_system_initialized):
+    """Acquisition FK RESTRICT prevents Ingredient deletion when referenced."""
+    from dinner_persistence.models import Acquisition, Ingredient
+    from sqlalchemy.exc import IntegrityError
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    acq = Acquisition(ingredient_id=ing.id, quantity=100, unit="g", cost=10.00)
+    db_session.add(acq)
+    db_session.commit()
+
+    # Attempt to delete referenced ingredient
+    db_session.delete(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_acquisition_ingredient_fk_exists(db_session, unit_system_initialized):
+    """Acquisition must reference existing Ingredient."""
+    from dinner_persistence.models import Acquisition
+    from sqlalchemy.exc import IntegrityError
+
+    # Try to create acquisition with non-existent ingredient_id
+    acq = Acquisition(ingredient_id=999, quantity=100, unit="g", cost=10.00)
+    db_session.add(acq)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_consumption_table_exists(db_session, unit_system_initialized):
+    """Consumption table exists with correct columns."""
+    from dinner_persistence.models import Consumption, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    con = Consumption(ingredient_id=ing.id, quantity=50, unit="g")
+    db_session.add(con)
+    db_session.commit()
+
+    db_session.refresh(con)
+    assert con.id is not None
+    assert con.ingredient_id == ing.id
+    assert con.quantity == 50
+    assert con.unit == "g"
+    assert con.consumed_at is not None
+
+
+def test_consumption_quantity_check_constraint(db_session, unit_system_initialized):
+    """Consumption.quantity > 0 enforced at DB level."""
+    from dinner_persistence.models import Consumption, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Valid: positive quantity
+    con = Consumption(ingredient_id=ing.id, quantity=50, unit="g")
+    db_session.add(con)
+    db_session.commit()
+
+    # Invalid: zero quantity
+    con = Consumption(ingredient_id=ing.id, quantity=0, unit="g")
+    db_session.add(con)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+    # Invalid: negative quantity
+    con = Consumption(ingredient_id=ing.id, quantity=-1, unit="g")
+    db_session.add(con)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_consumption_fk_restrict(db_session, unit_system_initialized):
+    """Consumption FK RESTRICT prevents Ingredient deletion when referenced."""
+    from dinner_persistence.models import Consumption, Ingredient
+    from sqlalchemy.exc import IntegrityError
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    con = Consumption(ingredient_id=ing.id, quantity=50, unit="g")
+    db_session.add(con)
+    db_session.commit()
+
+    # Attempt to delete referenced ingredient
+    db_session.delete(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_waste_table_exists(db_session, unit_system_initialized):
+    """Waste table exists with correct columns."""
+    from dinner_persistence.models import Waste, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    was = Waste(ingredient_id=ing.id, quantity=25, unit="g")
+    db_session.add(was)
+    db_session.commit()
+
+    db_session.refresh(was)
+    assert was.id is not None
+    assert was.ingredient_id == ing.id
+    assert was.quantity == 25
+    assert was.unit == "g"
+    assert was.wasted_at is not None
+
+
+def test_waste_quantity_check_constraint(db_session, unit_system_initialized):
+    """Waste.quantity > 0 enforced at DB level."""
+    from dinner_persistence.models import Waste, Ingredient
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Valid: positive quantity
+    was = Waste(ingredient_id=ing.id, quantity=25, unit="g")
+    db_session.add(was)
+    db_session.commit()
+
+    # Invalid: zero quantity
+    was = Waste(ingredient_id=ing.id, quantity=0, unit="g")
+    db_session.add(was)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+    # Invalid: negative quantity
+    was = Waste(ingredient_id=ing.id, quantity=-1, unit="g")
+    db_session.add(was)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_waste_fk_restrict(db_session, unit_system_initialized):
+    """Waste FK RESTRICT prevents Ingredient deletion when referenced."""
+    from dinner_persistence.models import Waste, Ingredient
+    from sqlalchemy.exc import IntegrityError
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    was = Waste(ingredient_id=ing.id, quantity=25, unit="g")
+    db_session.add(was)
+    db_session.commit()
+
+    # Attempt to delete referenced ingredient
+    db_session.delete(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_event_fk_restrict_ingredient_deletion_blocked(db_session, unit_system_initialized):
+    """Ingredient deletion blocked by RESTRICT FK when referenced by ANY event."""
+    from dinner_persistence.models import Acquisition, Consumption, Waste, Ingredient
+    from sqlalchemy.exc import IntegrityError
+
+    ing = Ingredient(name="Flour", quantity=1000, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Add all three event types
+    acq = Acquisition(ingredient_id=ing.id, quantity=100, unit="g", cost=10.00)
+    db_session.add(acq)
+    db_session.commit()
+
+    # Should be blocked by Acquisition
+    db_session.delete(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+
+    # Remove acquisition, add consumption
+    db_session.delete(acq)
+    db_session.commit()
+
+    con = Consumption(ingredient_id=ing.id, quantity=50, unit="g")
+    db_session.add(con)
+    db_session.commit()
+
+    # Should be blocked by Consumption
+    db_session.delete(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+
+    # Remove consumption, add waste
+    db_session.delete(con)
+    db_session.commit()
+
+    was = Waste(ingredient_id=ing.id, quantity=25, unit="g")
+    db_session.add(was)
+    db_session.commit()
+
+    # Should be blocked by Waste
+    db_session.delete(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_event_indexes_exist(db_session):
+    """Indexes on ingredient_id exist for all three event tables."""
+    from sqlalchemy import inspect
+    from flask import current_app
+    db = current_app.extensions['sqlalchemy']
+
+    insp = inspect(db.engine)
+
+    # Check acquisition index
+    acq_indexes = insp.get_indexes('acquisition')
+    acq_ing_idx = [idx for idx in acq_indexes if 'ingredient_id' in idx['column_names']]
+    assert len(acq_ing_idx) > 0
+
+    # Check consumption index
+    con_indexes = insp.get_indexes('consumption')
+    con_ing_idx = [idx for idx in con_indexes if 'ingredient_id' in idx['column_names']]
+    assert len(con_ing_idx) > 0
+
+    # Check waste index
+    was_indexes = insp.get_indexes('waste')
+    was_ing_idx = [idx for idx in was_indexes if 'ingredient_id' in idx['column_names']]
+    assert len(was_ing_idx) > 0
+
+
+def test_ingredient_quantity_nonnegative_still_enforced(db_session, unit_system_initialized):
+    """Ingredient.quantity >= 0 constraint remains after Slice 2 additions."""
+    from dinner_persistence.models import Ingredient
+
+    # Valid: zero quantity
+    ing = Ingredient(name="Flour", quantity=0, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Valid: positive quantity
+    ing = Ingredient(name="Sugar", quantity=100, unit="g")
+    db_session.add(ing)
+    db_session.commit()
+
+    # Invalid: negative quantity
+    ing = Ingredient(name="Bad", quantity=-1, unit="g")
+    db_session.add(ing)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

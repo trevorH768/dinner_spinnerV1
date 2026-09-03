@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
     CheckConstraint,
+    Numeric,
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
@@ -83,6 +84,27 @@ class Ingredient(Base):
     # lines 254-258, 167-169)
     recipe_ingredients = relationship(
         "RecipeIngredient",
+        back_populates="ingredient",
+    )
+
+    # One-to-many: ingredient has many Acquisitions
+    # No cascade: FK ondelete="RESTRICT" blocks deletion when referenced
+    acquisitions = relationship(
+        "Acquisition",
+        back_populates="ingredient",
+    )
+
+    # One-to-many: ingredient has many Consumptions
+    # No cascade: FK ondelete="RESTRICT" blocks deletion when referenced
+    consumptions = relationship(
+        "Consumption",
+        back_populates="ingredient",
+    )
+
+    # One-to-many: ingredient has many Wastes
+    # No cascade: FK ondelete="RESTRICT" blocks deletion when referenced
+    wastes = relationship(
+        "Waste",
         back_populates="ingredient",
     )
 
@@ -232,4 +254,110 @@ class MealPlan(Base):
             meal_type=self.meal_type,
             recipe_id=self.recipe_id,
             servings=self.servings,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Acquisition
+# ---------------------------------------------------------------------------
+
+
+class Acquisition(Base):
+    __tablename__ = "acquisition"
+
+    id = Column(Integer, primary_key=True)
+    ingredient_id = Column(
+        Integer, ForeignKey("ingredient.id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity = Column(Float, nullable=False)
+    unit = Column(String(40), nullable=False)
+    cost = Column(Numeric(10, 2), nullable=False, default=0)
+    acquired_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Many-to-one: acquisition belongs to an ingredient
+    ingredient = relationship("Ingredient", back_populates="acquisitions", uselist=False)
+
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_acquisition_quantity_positive"),
+        CheckConstraint("cost >= 0", name="ck_acquisition_cost_nonnegative"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.acquisition import Acquisition as DI_Acquisition
+        from decimal import Decimal
+        return DI_Acquisition(
+            id=self.id,
+            ingredient_id=self.ingredient_id,
+            quantity=self.quantity,
+            unit=self.unit,
+            cost=Decimal(str(self.cost)),
+            acquired_at=self.acquired_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Consumption
+# ---------------------------------------------------------------------------
+
+
+class Consumption(Base):
+    __tablename__ = "consumption"
+
+    id = Column(Integer, primary_key=True)
+    ingredient_id = Column(
+        Integer, ForeignKey("ingredient.id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity = Column(Float, nullable=False)
+    unit = Column(String(40), nullable=False)
+    consumed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Many-to-one: consumption belongs to an ingredient
+    ingredient = relationship("Ingredient", back_populates="consumptions", uselist=False)
+
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_consumption_quantity_positive"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.consumption import Consumption as DI_Consumption
+        return DI_Consumption(
+            id=self.id,
+            ingredient_id=self.ingredient_id,
+            quantity=self.quantity,
+            unit=self.unit,
+            consumed_at=self.consumed_at,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Waste
+# ---------------------------------------------------------------------------
+
+
+class Waste(Base):
+    __tablename__ = "waste"
+
+    id = Column(Integer, primary_key=True)
+    ingredient_id = Column(
+        Integer, ForeignKey("ingredient.id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity = Column(Float, nullable=False)
+    unit = Column(String(40), nullable=False)
+    wasted_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Many-to-one: waste belongs to an ingredient
+    ingredient = relationship("Ingredient", back_populates="wastes", uselist=False)
+
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_waste_quantity_positive"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.waste import Waste as DI_Waste
+        return DI_Waste(
+            id=self.id,
+            ingredient_id=self.ingredient_id,
+            quantity=self.quantity,
+            unit=self.unit,
+            wasted_at=self.wasted_at,
         )

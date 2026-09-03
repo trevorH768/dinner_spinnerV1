@@ -63,6 +63,92 @@ class Ingredient:
         return hash((self.id, self.name, self.inventory_category_id,
                      self.quantity, self.unit))
 
+    def increase_quantity(self, quantity: float, unit: str) -> None:
+        """Increase the ingredient's quantity by the given amount in the specified unit.
+
+        The quantity is converted to the ingredient's current unit using the UnitSystem
+        before being added to the current quantity.
+
+        Args:
+            quantity: The amount to add (must be > 0)
+            unit: The unit of the quantity to add
+
+        Raises:
+            ValueError: If quantity <= 0, unit invalid, or unit incompatible
+            RuntimeError: If UnitSystem not initialized
+        """
+        if quantity <= 0:
+            raise ValueError("Quantity must be greater than zero")
+        if not unit or not unit.strip():
+            raise ValueError("Unit is required")
+        unit = unit.strip()
+
+        if not is_initialized():
+            raise RuntimeError("UnitSystem not initialized; call initialize() first")
+
+        if not validate_unit(unit):
+            raise ValueError(f"Unit '{unit}' is not a recognized unit")
+
+        # Check category compatibility
+        from_cat = category_of(unit)
+        to_cat = category_of(self.unit)
+        if from_cat != to_cat:
+            raise ValueError(
+                f"Cannot convert '{unit}' to '{self.unit}': "
+                "different measurement categories (requires density information)"
+            )
+
+        # Convert the incoming quantity to the ingredient's unit
+        converted_qty = convert(quantity, unit, self.unit)
+        self.quantity += converted_qty
+
+    def decrease_quantity(self, quantity: float, unit: str) -> None:
+        """Decrease the ingredient's quantity by the given amount in the specified unit.
+
+        The quantity is converted to the ingredient's current unit using the UnitSystem
+        before being subtracted from the current quantity.
+
+        Args:
+            quantity: The amount to subtract (must be > 0)
+            unit: The unit of the quantity to subtract
+
+        Raises:
+            ValueError: If quantity <= 0, unit invalid, unit incompatible,
+                       or resulting quantity would be negative
+            RuntimeError: If UnitSystem not initialized
+        """
+        if quantity <= 0:
+            raise ValueError("Quantity must be greater than zero")
+        if not unit or not unit.strip():
+            raise ValueError("Unit is required")
+        unit = unit.strip()
+
+        if not is_initialized():
+            raise RuntimeError("UnitSystem not initialized; call initialize() first")
+
+        if not validate_unit(unit):
+            raise ValueError(f"Unit '{unit}' is not a recognized unit")
+
+        # Check category compatibility
+        from_cat = category_of(unit)
+        to_cat = category_of(self.unit)
+        if from_cat != to_cat:
+            raise ValueError(
+                f"Cannot convert '{unit}' to '{self.unit}': "
+                "different measurement categories (requires density information)"
+            )
+
+        # Convert the incoming quantity to the ingredient's unit
+        converted_qty = convert(quantity, unit, self.unit)
+
+        if converted_qty > self.quantity:
+            raise ValueError(
+                f"Cannot decrease by {quantity} {unit} (={converted_qty} {self.unit}): "
+                f"would result in negative inventory (current: {self.quantity} {self.unit})"
+            )
+
+        self.quantity -= converted_qty
+
     def change_unit(self, target_unit: str) -> None:
         """Change the unit of this ingredient, preserving the physical quantity.
 

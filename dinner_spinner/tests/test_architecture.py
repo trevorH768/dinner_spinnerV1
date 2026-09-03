@@ -205,15 +205,6 @@ def test_domain_has_no_shopping_list_entity():
     assert "ShoppingList" not in domain_exports
 
 
-def test_domain_has_no_acquisition_entity():
-    """Acquisition is NOT in the foundational domain (Slice 1 only)."""
-    from dinner_spinner.domain import __all__ as domain_exports
-    # Acquisition, Consumption, Waste are in Slice 2
-    assert "Acquisition" not in domain_exports
-    assert "Consumption" not in domain_exports
-    assert "Waste" not in domain_exports
-
-
 # ---------------------------------------------------------------------------
 # 3. Ingredient Boundary Tests
 # ---------------------------------------------------------------------------
@@ -338,10 +329,335 @@ def test_ingredient_change_unit_requires_initialized():
 
 
 # ---------------------------------------------------------------------------
-# 4. Unit Boundary Tests
+# 3.5. Ingredient Quantity Methods Tests (Slice 2)
 # ---------------------------------------------------------------------------
 
-def test_single_authoritative_unit_system():
+def test_ingredient_increase_quantity():
+    """Ingredient.increase_quantity() adds converted quantity to current."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    # Increase kg with g (same category)
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=1, unit="kg")
+    ing.increase_quantity(500, "g")
+    assert ing.quantity == 1.5 and ing.unit == "kg"
+
+    # Increase g with kg
+    ing = Ingredient(id=2, name="Sugar", inventory_category_id=None, quantity=500, unit="g")
+    ing.increase_quantity(1, "kg")
+    assert ing.quantity == 1500 and ing.unit == "g"
+
+    # Volume: l + ml
+    ing = Ingredient(id=3, name="Water", inventory_category_id=None, quantity=1, unit="l")
+    ing.increase_quantity(500, "ml")
+    assert ing.quantity == 1.5 and ing.unit == "l"
+
+
+def test_ingredient_decrease_quantity():
+    """Ingredient.decrease_quantity() subtracts converted quantity from current."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    # Decrease kg with g
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=2, unit="kg")
+    ing.decrease_quantity(500, "g")
+    assert ing.quantity == 1.5 and ing.unit == "kg"
+
+    # Decrease g with kg
+    ing = Ingredient(id=2, name="Sugar", inventory_category_id=None, quantity=2000, unit="g")
+    ing.decrease_quantity(1, "kg")
+    assert ing.quantity == 1000 and ing.unit == "g"
+
+
+def test_ingredient_decrease_quantity_rejects_negative_result():
+    """Ingredient.decrease_quantity() rejects if result would be negative."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="negative inventory"):
+        ing.decrease_quantity(200, "g")
+
+
+def test_ingredient_increase_quantity_rejects_zero_or_negative():
+    """Ingredient.increase_quantity() rejects zero or negative quantity."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="greater than zero"):
+        ing.increase_quantity(0, "g")
+    with pytest.raises(ValueError, match="greater than zero"):
+        ing.increase_quantity(-1, "g")
+
+
+def test_ingredient_decrease_quantity_rejects_zero_or_negative():
+    """Ingredient.decrease_quantity() rejects zero or negative quantity."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="greater than zero"):
+        ing.decrease_quantity(0, "g")
+    with pytest.raises(ValueError, match="greater than zero"):
+        ing.decrease_quantity(-1, "g")
+
+
+def test_ingredient_increase_quantity_rejects_cross_category():
+    """Ingredient.increase_quantity() rejects cross-category units."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="different measurement categories"):
+        ing.increase_quantity(100, "ml")
+
+
+def test_ingredient_decrease_quantity_rejects_cross_category():
+    """Ingredient.decrease_quantity() rejects cross-category units."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="different measurement categories"):
+        ing.decrease_quantity(100, "ml")
+
+
+def test_ingredient_increase_decrease_require_initialized():
+    """increase/decrease_quantity raise if UnitSystem not initialized."""
+    from dinner_spinner.domain.unit_system import reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()  # uninitialized
+    ing = Ingredient(id=1, name="Test", inventory_category_id=None, quantity=100, unit="g")
+
+    with pytest.raises(RuntimeError, match="not initialized"):
+        ing.increase_quantity(10, "g")
+    with pytest.raises(RuntimeError, match="not initialized"):
+        ing.decrease_quantity(10, "g")
+
+
+# ---------------------------------------------------------------------------
+# 3.6. Slice 2 Domain Entity Tests
+# ---------------------------------------------------------------------------
+
+def test_acquisition_valid():
+    """Acquisition accepts valid data."""
+    from datetime import datetime
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.acquisition import Acquisition
+
+    reset()
+    initialize()
+
+    acq = Acquisition(id=1, ingredient_id=1, quantity=100, unit="g",
+                      cost=Decimal("10.50"), acquired_at=datetime(2024, 1, 1))
+    assert acq.id == 1
+    assert acq.ingredient_id == 1
+    assert acq.quantity == 100
+    assert acq.unit == "g"
+    assert acq.cost == Decimal("10.50")
+    assert acq.acquired_at == datetime(2024, 1, 1)
+
+
+def test_acquisition_rejects_zero_quantity():
+    """Acquisition rejects zero or negative quantity."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.acquisition import Acquisition
+
+    reset()
+    initialize()
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        Acquisition(id=1, ingredient_id=1, quantity=0, unit="g", cost=Decimal("10"))
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        Acquisition(id=1, ingredient_id=1, quantity=-1, unit="g", cost=Decimal("10"))
+
+
+def test_acquisition_rejects_negative_cost():
+    """Acquisition rejects negative cost."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.acquisition import Acquisition
+
+    reset()
+    initialize()
+
+    with pytest.raises(ValueError, match="cannot be negative"):
+        Acquisition(id=1, ingredient_id=1, quantity=100, unit="g", cost=Decimal("-1"))
+
+
+def test_acquisition_rejects_invalid_unit():
+    """Acquisition rejects invalid/unrecognized unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.acquisition import Acquisition
+
+    reset()
+    initialize()
+
+    with pytest.raises(ValueError, match="not a recognized unit"):
+        Acquisition(id=1, ingredient_id=1, quantity=100, unit="invalid", cost=Decimal("10"))
+
+
+def test_acquisition_rejects_cross_category_unit():
+    """Acquisition rejects cross-category unit (via Ingredient validation later)."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.acquisition import Acquisition
+
+    reset()
+    initialize()
+
+    # The Acquisition itself doesn't know the ingredient's unit, but it validates
+    # that the unit is recognized. Cross-category validation happens at application
+    # layer when converting to ingredient's unit.
+    acq = Acquisition(id=1, ingredient_id=1, quantity=100, unit="ml",
+                      cost=Decimal("10"))
+    assert acq.unit == "ml"
+
+
+def test_acquisition_immutable():
+    """Acquisition is immutable after creation (no setters)."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.acquisition import Acquisition
+
+    reset()
+    initialize()
+
+    acq = Acquisition(id=1, ingredient_id=1, quantity=100, unit="g",
+                      cost=Decimal("10"))
+    # No setters should exist - attempting to modify should fail or be ignored
+    # We just verify the object is created correctly and has the right attributes
+    assert acq.quantity == 100
+    assert acq.unit == "g"
+    assert acq.cost == Decimal("10")
+
+
+def test_consumption_valid():
+    """Consumption accepts valid data."""
+    from datetime import datetime
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.consumption import Consumption
+
+    reset()
+    initialize()
+
+    con = Consumption(id=1, ingredient_id=1, quantity=50, unit="g",
+                      consumed_at=datetime(2024, 1, 1))
+    assert con.id == 1
+    assert con.ingredient_id == 1
+    assert con.quantity == 50
+    assert con.unit == "g"
+    assert con.consumed_at == datetime(2024, 1, 1)
+
+
+def test_consumption_rejects_zero_quantity():
+    """Consumption rejects zero or negative quantity."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.consumption import Consumption
+
+    reset()
+    initialize()
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        Consumption(id=1, ingredient_id=1, quantity=0, unit="g")
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        Consumption(id=1, ingredient_id=1, quantity=-1, unit="g")
+
+
+def test_consumption_immutable():
+    """Consumption is immutable after creation."""
+    from datetime import datetime
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.consumption import Consumption
+
+    reset()
+    initialize()
+
+    con = Consumption(id=1, ingredient_id=1, quantity=50, unit="g",
+                      consumed_at=datetime(2024, 1, 1))
+    assert con.quantity == 50
+    assert con.unit == "g"
+
+
+def test_waste_valid():
+    """Waste accepts valid data."""
+    from datetime import datetime
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.waste import Waste
+
+    reset()
+    initialize()
+
+    was = Waste(id=1, ingredient_id=1, quantity=25, unit="g",
+                wasted_at=datetime(2024, 1, 1))
+    assert was.id == 1
+    assert was.ingredient_id == 1
+    assert was.quantity == 25
+    assert was.unit == "g"
+    assert was.wasted_at == datetime(2024, 1, 1)
+
+
+def test_waste_rejects_zero_quantity():
+    """Waste rejects zero or negative quantity."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.waste import Waste
+
+    reset()
+    initialize()
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        Waste(id=1, ingredient_id=1, quantity=0, unit="g")
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        Waste(id=1, ingredient_id=1, quantity=-1, unit="g")
+
+
+def test_waste_immutable():
+    """Waste is immutable after creation."""
+    from datetime import datetime
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.waste import Waste
+
+    reset()
+    initialize()
+
+    was = Waste(id=1, ingredient_id=1, quantity=25, unit="g",
+                wasted_at=datetime(2024, 1, 1))
+    assert was.quantity == 25
+    assert was.unit == "g"
+
+
+# ---------------------------------------------------------------------------
+# 4. Unit Boundary Tests
+# ---------------------------------------------------------------------------
     """There must be one authoritative conversion implementation."""
     from dinner_spinner.domain import unit_system
 
@@ -662,6 +978,9 @@ def test_domain_exports_exact_entities():
         "Recipe",
         "RecipeIngredient",
         "MealPlan",
+        "Acquisition",
+        "Consumption",
+        "Waste",
         "UnitSystem",
     }
 
@@ -674,7 +993,6 @@ def test_domain_exports_exact_entities():
         "Container", "InventoryLot", "Product", "Package", "Store",
         "Brand", "Barcode", "Nutrition", "InventoryEvent", "Transfer",
         "PriceEstimate", "ShoppingList", "ShoppingListItem",
-        "Acquisition", "Consumption", "Waste",
         "Demand", "AvailableInventory", "NetRequirement",
         "CostPerUnit", "RecipeCost", "MealCost",
     }

@@ -467,3 +467,151 @@ def meal_plan_update(week_start):
     db.session.commit()
     flash("Meal plan updated", "success")
     return redirect(url_for("main.meal_plan"))
+
+
+# =============================================================================
+# Slice 2: Inventory Event Routes
+# =============================================================================
+
+@bp.route("/inventory/events")
+def inventory_events():
+    """Global event history view."""
+    from dinner_persistence import db
+    from dinner_spinner.application.inventory_events import get_global_event_history
+
+    history = get_global_event_history(db.session, limit=50)
+    return render_template("inventory_events.html", history=history)
+
+
+@bp.route("/ingredients/<int:id>/events")
+def ingredient_events(id):
+    """Per-ingredient event history view."""
+    from dinner_persistence import db
+    from dinner_persistence.models import Ingredient
+    from dinner_spinner.application.inventory_events import get_ingredient_history
+
+    ingredient = db.session.get(Ingredient, id)
+    if not ingredient:
+        flash("Ingredient not found", "error")
+        return redirect(url_for("main.ingredients"))
+
+    history = get_ingredient_history(db.session, id)
+    return render_template("ingredient_events.html", ingredient=ingredient, history=history)
+
+
+@bp.route("/ingredients/<int:id>/acquire", methods=["GET", "POST"])
+def ingredient_acquire(id):
+    """Record an acquisition for an ingredient."""
+    from dinner_persistence import db
+    from dinner_persistence.models import Ingredient, InventoryCategory
+    from dinner_spinner.application.inventory_events import (
+        record_acquisition, InvalidQuantityError, InvalidUnitError,
+        InventoryEventError, IngredientNotFoundError
+    )
+
+    ingredient = db.session.get(Ingredient, id)
+    if not ingredient:
+        flash("Ingredient not found", "error")
+        return redirect(url_for("main.ingredients"))
+
+    if request.method == "POST":
+        quantity = float(request.form.get("quantity", 0) or 0)
+        unit = request.form.get("unit", "").strip()
+        cost = float(request.form.get("cost", 0) or 0)
+
+        try:
+            record_acquisition(db.session, ingredient_id=id, quantity=quantity, unit=unit, cost=cost)
+            flash(f"Acquired {quantity} {unit} of {ingredient.name}", "success")
+            return redirect(url_for("main.ingredient_events", id=id))
+        except InvalidQuantityError as e:
+            flash(f"Invalid quantity: {e}", "error")
+        except InvalidUnitError as e:
+            flash(f"Invalid unit: {e}", "error")
+        except InventoryEventError as e:
+            flash(f"Error: {e}", "error")
+        except IngredientNotFoundError:
+            flash("Ingredient not found", "error")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error recording acquisition: {e}", "error")
+
+    categories = db.session.query(InventoryCategory).order_by(InventoryCategory.name).all()
+    return render_template("acquire_form.html", ingredient=ingredient, categories=categories)
+
+
+@bp.route("/ingredients/<int:id>/consume", methods=["GET", "POST"])
+def ingredient_consume(id):
+    """Record consumption for an ingredient."""
+    from dinner_persistence import db
+    from dinner_persistence.models import Ingredient, InventoryCategory
+    from dinner_spinner.application.inventory_events import (
+        record_consumption, InvalidQuantityError, InvalidUnitError,
+        InsufficientInventoryError, IngredientNotFoundError
+    )
+
+    ingredient = db.session.get(Ingredient, id)
+    if not ingredient:
+        flash("Ingredient not found", "error")
+        return redirect(url_for("main.ingredients"))
+
+    if request.method == "POST":
+        quantity = float(request.form.get("quantity", 0) or 0)
+        unit = request.form.get("unit", "").strip()
+
+        try:
+            record_consumption(db.session, ingredient_id=id, quantity=quantity, unit=unit)
+            flash(f"Consumed {quantity} {unit} of {ingredient.name}", "success")
+            return redirect(url_for("main.ingredient_events", id=id))
+        except InvalidQuantityError as e:
+            flash(f"Invalid quantity: {e}", "error")
+        except InvalidUnitError as e:
+            flash(f"Invalid unit: {e}", "error")
+        except InsufficientInventoryError as e:
+            flash(f"Insufficient inventory: {e}", "error")
+        except IngredientNotFoundError:
+            flash("Ingredient not found", "error")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error recording consumption: {e}", "error")
+
+    categories = db.session.query(InventoryCategory).order_by(InventoryCategory.name).all()
+    return render_template("consume_form.html", ingredient=ingredient, categories=categories)
+
+
+@bp.route("/ingredients/<int:id>/waste", methods=["GET", "POST"])
+def ingredient_waste(id):
+    """Record waste for an ingredient."""
+    from dinner_persistence import db
+    from dinner_persistence.models import Ingredient, InventoryCategory
+    from dinner_spinner.application.inventory_events import (
+        record_waste, InvalidQuantityError, InvalidUnitError,
+        InsufficientInventoryError, IngredientNotFoundError
+    )
+
+    ingredient = db.session.get(Ingredient, id)
+    if not ingredient:
+        flash("Ingredient not found", "error")
+        return redirect(url_for("main.ingredients"))
+
+    if request.method == "POST":
+        quantity = float(request.form.get("quantity", 0) or 0)
+        unit = request.form.get("unit", "").strip()
+
+        try:
+            record_waste(db.session, ingredient_id=id, quantity=quantity, unit=unit)
+            flash(f"Wasted {quantity} {unit} of {ingredient.name}", "success")
+            return redirect(url_for("main.ingredient_events", id=id))
+        except InvalidQuantityError as e:
+            flash(f"Invalid quantity: {e}", "error")
+        except InvalidUnitError as e:
+            flash(f"Invalid unit: {e}", "error")
+        except InsufficientInventoryError as e:
+            flash(f"Insufficient inventory: {e}", "error")
+        except IngredientNotFoundError:
+            flash("Ingredient not found", "error")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error recording waste: {e}", "error")
+
+    categories = db.session.query(InventoryCategory).order_by(InventoryCategory.name).all()
+    return render_template("waste_form.html", ingredient=ingredient, categories=categories)

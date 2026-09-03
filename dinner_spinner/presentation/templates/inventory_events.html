@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Event History - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Global Inventory Event History</h2>
+    <p style="color: #666; font-size: 14px;">Showing most recent 50 events across all ingredients</p>
+
+    {% if history.acquisitions or history.consumptions or history.wastes %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+        {% if history.acquisitions %}
+        <div class="card" style="border-left: 4px solid #28a745;">
+            <h3 style="color: #28a745; margin-top: 0;">Acquisitions ({{ history.acquisitions|length }})</h3>
+            <table style="font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Ingredient</th>
+                        <th>Qty</th>
+                        <th>Cost</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for acq in history.acquisitions %}
+                    <tr>
+                        <td><a href="{{ url_for('main.ingredient_events', id=acq.ingredient_id) }}">{{ acq.ingredient_id }}</a></td>
+                        <td>{{ acq.quantity }} {{ acq.unit }}</td>
+                        <td>${{ "%.2f"|format(acq.cost) }}</td>
+                        <td>{{ acq.acquired_at.strftime('%Y-%m-%d %H:%M') if acq.acquired_at else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if history.consumptions %}
+        <div class="card" style="border-left: 4px solid #dc3545;">
+            <h3 style="color: #dc3545; margin-top: 0;">Consumptions ({{ history.consumptions|length }})</h3>
+            <table style="font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Ingredient</th>
+                        <th>Qty</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for con in history.consumptions %}
+                    <tr>
+                        <td><a href="{{ url_for('main.ingredient_events', id=con.ingredient_id) }}">{{ con.ingredient_id }}</a></td>
+                        <td>{{ con.quantity }} {{ con.unit }}</td>
+                        <td>{{ con.consumed_at.strftime('%Y-%m-%d %H:%M') if con.consumed_at else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if history.wastes %}
+        <div class="card" style="border-left: 4px solid #ffc107;">
+            <h3 style="color: #856404; margin-top: 0;">Waste ({{ history.wastes|length }})</h3>
+            <table style="font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Ingredient</th>
+                        <th>Qty</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for was in history.wastes %}
+                    <tr>
+                        <td><a href="{{ url_for('main.ingredient_events', id=was.ingredient_id) }}">{{ was.ingredient_id }}</a></td>
+                        <td>{{ was.quantity }} {{ was.unit }}</td>
+                        <td>{{ was.wasted_at.strftime('%Y-%m-%d %H:%M') if was.wasted_at else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <p>No inventory events recorded yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
