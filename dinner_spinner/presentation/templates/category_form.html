@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{% if category %}Edit{% else %}New{% endif %} Category - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>{% if category %}Edit{% else %}New{% endif %} Category</h2>
+
+    <form method="POST">
+        <div>
+            <label for="name">Name *</label>
+            <input type="text" id="name" name="name" value="{{ category.name if category else '' }}" required>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <button type="submit">Save</button>
+            <a href="{{ url_for('main.categories') }}"><button type="button" class="secondary">Cancel</button></a>
+        </div>
+    </form>
+</div>
+{% endblock %}

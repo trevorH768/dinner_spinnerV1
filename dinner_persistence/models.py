@@ -1,0 +1,231 @@
+"""Persistence layer — SQLAlchemy models for Dinner Spinner V1.
+
+These models map directly to the domain entities defined in domain/.
+They are the authoritative database representation and enforce the
+constraints specified by V1_ARCHITECTURE.md.
+
+The persistence layer depends on the domain layer (for entity types),
+but the domain layer deliberately does NOT depend on this layer.
+"""
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    UniqueConstraint,
+    CheckConstraint,
+)
+from sqlalchemy.orm import declarative_base, relationship
+from datetime import datetime
+
+# Domain entity imports are done lazily in to_domain() methods
+# to avoid circular imports with dinner_spinner package initialization.
+
+Base = declarative_base()
+
+
+# ---------------------------------------------------------------------------
+# InventoryCategory
+# ---------------------------------------------------------------------------
+
+
+class InventoryCategory(Base):
+    __tablename__ = "inventory_category"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(70), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # One-to-many: a category may have many ingredients
+    ingredients = relationship(
+        "Ingredient",
+        back_populates="inventory_category",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.inventory_category import InventoryCategory as DC_IC
+        return DC_IC(id=self.id, name=self.name)
+
+
+# ---------------------------------------------------------------------------
+# Ingredient
+# ---------------------------------------------------------------------------
+
+
+class Ingredient(Base):
+    __tablename__ = "ingredient"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), nullable=False)
+    inventory_category_id = Column(
+        Integer, ForeignKey("inventory_category.id", ondelete="SET NULL"), nullable=True
+    )
+    quantity = Column(Float, nullable=False, default=0)
+    unit = Column(String(40), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Many-to-one: ingredient belongs to optional category
+    inventory_category = relationship(
+        "InventoryCategory",
+        back_populates="ingredients",
+        uselist=False,
+    )
+
+    # One-to-many: ingredient referenced by many RecipeIngredients
+    recipe_ingredients = relationship(
+        "RecipeIngredient",
+        back_populates="ingredient",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        CheckConstraint("quantity >= 0", name="ck_ingredient_quantity_nonnegative"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.ingredient import Ingredient as DI_Ingredient
+        from dinner_spinner.domain.inventory_category import InventoryCategory as DC_IC
+        cat = (
+            DC_IC(id=self.inventory_category.id, name=self.inventory_category.name)
+            if self.inventory_category
+            else None
+        )
+        return DI_Ingredient(
+            id=self.id,
+            name=self.name,
+            inventory_category_id=self.inventory_category_id,
+            quantity=self.quantity,
+            unit=self.unit,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Recipe
+# ---------------------------------------------------------------------------
+
+
+class Recipe(Base):
+    __tablename__ = "recipe"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), nullable=False)
+    servings = Column(Integer, nullable=False)
+    instructions = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # One-to-many: recipe has many RecipeIngredients
+    recipe_ingredients = relationship(
+        "RecipeIngredient",
+        back_populates="recipe",
+        cascade="all, delete-orphan",
+    )
+
+    # One-to-many (inverse): MealPlans referencing this recipe
+    meal_plans = relationship(
+        "MealPlan",
+        back_populates="recipe",
+        cascade="delete",
+    )
+
+    __table_args__ = (
+        CheckConstraint("servings > 0", name="ck_recipe_servings_positive"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.recipe import Recipe as DI_Recipe
+        return DI_Recipe(
+            id=self.id,
+            name=self.name,
+            servings=self.servings,
+            instructions=self.instructions,
+        )
+
+
+# ---------------------------------------------------------------------------
+# RecipeIngredient
+# ---------------------------------------------------------------------------
+
+
+class RecipeIngredient(Base):
+    __tablename__ = "recipe_ingredient"
+
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(
+        Integer, ForeignKey("recipe.id", ondelete="CASCADE"), nullable=False
+    )
+    ingredient_id = Column(
+        Integer, ForeignKey("ingredient.id", ondelete="RESTRICT"), nullable=False
+    )
+    quantity = Column(Float, nullable=False)
+    unit = Column(String(40), nullable=False)
+
+    # Many-to-one: belongs to a recipe
+    recipe = relationship("Recipe", back_populates="recipe_ingredients")
+
+    # Many-to-one: belongs to an ingredient
+    ingredient = relationship("Ingredient", back_populates="recipe_ingredients")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "recipe_id", "ingredient_id", name="uq_recipe_ingredient_recipe_ingredient"
+        ),
+        CheckConstraint("quantity > 0", name="ck_recipe_ingredient_quantity_positive"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.recipe_ingredient import RecipeIngredient as DI_RecipeIngredient
+        return DI_RecipeIngredient(
+            id=self.id,
+            recipe_id=self.recipe_id,
+            ingredient_id=self.ingredient_id,
+            quantity=self.quantity,
+            unit=self.unit,
+        )
+
+
+# ---------------------------------------------------------------------------
+# MealPlan
+# ---------------------------------------------------------------------------
+
+
+class MealPlan(Base):
+    __tablename__ = "meal_plan"
+
+    id = Column(Integer, primary_key=True)
+    week_start = Column(Integer, nullable=False)
+    day = Column(Integer, nullable=False)
+    meal_type = Column(String(40), nullable=False)
+    recipe_id = Column(
+        Integer, ForeignKey("recipe.id", ondelete="SET NULL"), nullable=True
+    )
+    servings = Column(Integer, nullable=False)
+
+    # Many-to-one: meal plan references a recipe (nullable)
+    recipe = relationship("Recipe", back_populates="meal_plans")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "week_start",
+            "day",
+            "meal_type",
+            name="uq_mealplan_week_day_meal_type",
+        ),
+        CheckConstraint("servings > 0", name="ck_mealplan_servings_positive"),
+    )
+
+    def to_domain(self):
+        from dinner_spinner.domain.meal_plan import MealPlan as DI_MealPlan
+        return DI_MealPlan(
+            id=self.id,
+            week_start=self.week_start,
+            day=self.day,
+            meal_type=self.meal_type,
+            recipe_id=self.recipe_id,
+            servings=self.servings,
+        )

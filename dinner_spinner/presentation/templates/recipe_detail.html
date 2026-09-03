@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}{{ recipe.name }} - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>{{ recipe.name }}</h2>
+        <div class="actions">
+            <a href="{{ url_for('main.recipe_edit', id=recipe.id) }}">Edit</a>
+            <form method="POST" action="{{ url_for('main.recipe_delete', id=recipe.id) }}" onsubmit="return confirm('Delete this recipe?')">
+                <button type="submit" class="danger">Delete</button>
+            </form>
+        </div>
+    </div>
+
+    <p><strong>Servings:</strong> {{ recipe.servings }}</p>
+
+    {% if recipe.instructions %}
+    <div style="margin: 20px 0;">
+        <h3>Instructions</h3>
+        <p style="white-space: pre-wrap;">{{ recipe.instructions }}</p>
+    </div>
+    {% endif %}
+
+    <h3>Ingredients</h3>
+    {% if recipe.recipe_ingredients %}
+    <table>
+        <thead>
+            <tr>
+                <th>Ingredient</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ri in recipe.recipe_ingredients %}
+            <tr>
+                <td>{{ ri.ingredient.name }}</td>
+                <td>{{ ri.quantity }}</td>
+                <td>{{ ri.unit }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No ingredients defined for this recipe.</p>
+    {% endif %}
+</div>
+{% endblock %}

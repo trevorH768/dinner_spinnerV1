@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Categories - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Inventory Categories</h2>
+        <a href="{{ url_for('main.category_new') }}"><button>New Category</button></a>
+    </div>
+
+    {% if categories %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Ingredients</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cat in categories %}
+            <tr>
+                <td>{{ cat.name }}</td>
+                <td>{{ cat.ingredients|length }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('main.category_edit', id=cat.id) }}">Edit</a>
+                    <form method="POST" action="{{ url_for('main.category_delete', id=cat.id) }}" onsubmit="return confirm('Delete this category? Ingredients will become uncategorized.')">
+                        <button type="submit" class="danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No categories yet. <a href="{{ url_for('main.category_new') }}">Add your first category</a></p>
+    {% endif %}
+</div>
+{% endblock %}

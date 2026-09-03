@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Meal Plan - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Weekly Meal Plan</h2>
+
+    <form method="POST" action="{{ url_for('main.meal_plan_update', week_start=week_start) }}">
+        <div style="display: grid; grid-template-columns: 120px repeat(7, 1fr); gap: 10px; margin-bottom: 20px;">
+            <div></div>
+            {% for day in days %}
+            <div class="day-label">{{ ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day] }}</div>
+            {% endfor %}
+        </div>
+
+        {% for meal_type in meal_types %}
+        <div style="display: grid; grid-template-columns: 120px repeat(7, 1fr); gap: 10px; margin-bottom: 10px;">
+            <div style="font-weight: 600; padding: 10px; background: #f8f9fa; border-radius: 4px;">{{ meal_type }}</div>
+            {% for day in days %}
+            {% set mp = meal_plans.get((day, meal_type)) %}
+            <div class="meal-slot {% if not mp or not mp.recipe_id %}empty{% endif %}">
+                <select name="recipe_{{ day }}_{{ meal_type }}">
+                    <option value="">— Empty —</option>
+                    {% for r in recipes %}
+                    <option value="{{ r.id }}" {% if mp and mp.recipe_id == r.id %}selected{% endif %}>
+                        {{ r.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <input type="number" name="servings_{{ day }}_{{ meal_type }}" min="1" value="{{ mp.servings if mp else 1 }}" style="width: 60px; margin-top: 5px;" placeholder="Servings">
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <button type="submit">Save Meal Plan</button>
+    </form>
+</div>
+{% endblock %}

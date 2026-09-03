@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>This Week's Meal Plan</h2>
+    {% if meal_plans %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Day</th>
+                    <th>Meal</th>
+                    <th>Recipe</th>
+                    <th>Servings</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for mp in meal_plans %}
+                <tr>
+                    <td>{{ ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][mp.day] }}</td>
+                    <td>{{ mp.meal_type }}</td>
+                    <td>
+                        {% if mp.recipe %}
+                            <a href="{{ url_for('main.recipe_detail', id=mp.recipe.id) }}">{{ mp.recipe.name }}</a>
+                        {% else %}
+                            <em>Empty slot</em>
+                        {% endif %}
+                    </td>
+                    <td>{{ mp.servings }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No meals planned this week. <a href="{{ url_for('main.meal_plan') }}">Plan meals</a></p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Current Inventory</h2>
+    {% if ingredients_by_cat %}
+        {% for cat_name, ingredients in ingredients_by_cat.items() %}
+        <div class="category-section">
+            <div class="category-title">{{ cat_name }}</div>
+            {% for ing in ingredients %}
+            <div class="ingredient-row">
+                <div class="ingredient-info">
+                    <span class="ingredient-name">{{ ing.name }}</span>
+                    <span class="ingredient-qty">{{ ing.quantity }} {{ ing.unit }}</span>
+                </div>
+                <div class="actions">
+                    <a href="{{ url_for('main.ingredient_edit', id=ing.id) }}">Edit</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No ingredients in inventory. <a href="{{ url_for('main.ingredient_new') }}">Add ingredient</a></p>
+    {% endif %}
+</div>
+{% endblock %}

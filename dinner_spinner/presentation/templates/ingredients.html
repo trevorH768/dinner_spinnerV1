@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Ingredients - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Ingredients</h2>
+        <a href="{{ url_for('main.ingredient_new') }}"><button>New Ingredient</button></a>
+    </div>
+
+    {% if ingredients %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Quantity</th>
+                <th>Unit</th>
+                <th>Category</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ing in ingredients %}
+            <tr>
+                <td>{{ ing.name }}</td>
+                <td>{{ ing.quantity }}</td>
+                <td>{{ ing.unit }}</td>
+                <td>{{ ing.inventory_category.name if ing.inventory_category else '—' }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('main.ingredient_edit', id=ing.id) }}">Edit</a>
+                    <form method="POST" action="{{ url_for('main.ingredient_delete', id=ing.id) }}" onsubmit="return confirm('Delete this ingredient?')">
+                        <button type="submit" class="danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No ingredients yet. <a href="{{ url_for('main.ingredient_new') }}">Add your first ingredient</a></p>
+    {% endif %}
+</div>
+{% endblock %}

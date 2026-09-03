@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Recipes - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Recipes</h2>
+        <a href="{{ url_for('main.recipe_new') }}"><button>New Recipe</button></a>
+    </div>
+
+    {% if recipes %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Servings</th>
+                <th>Ingredients</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for recipe in recipes %}
+            <tr>
+                <td><a href="{{ url_for('main.recipe_detail', id=recipe.id) }}">{{ recipe.name }}</a></td>
+                <td>{{ recipe.servings }}</td>
+                <td>{{ recipe.recipe_ingredients|length }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('main.recipe_edit', id=recipe.id) }}">Edit</a>
+                    <form method="POST" action="{{ url_for('main.recipe_delete', id=recipe.id) }}" onsubmit="return confirm('Delete this recipe? This will remove it from meal plans.')">
+                        <button type="submit" class="danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No recipes yet. <a href="{{ url_for('main.recipe_new') }}">Add your first recipe</a></p>
+    {% endif %}
+</div>
+{% endblock %}
