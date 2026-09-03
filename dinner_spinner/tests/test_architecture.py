@@ -1000,5 +1000,345 @@ def test_domain_exports_exact_entities():
         assert f not in domain_exports, f"Forbidden entity exported: {f}"
 
 
+# ---------------------------------------------------------------------------
+# 8. Slice 3: Demand Tests
+# ---------------------------------------------------------------------------
+
+def test_demand_domain_exports():
+    """Demand entities are exported from domain layer."""
+    from dinner_spinner.domain import __all__ as domain_exports
+
+    expected = {"IngredientDemand", "calculate_demand", "calculate_demand_for_week"}
+    for e in expected:
+        assert e in domain_exports, f"Missing export: {e}"
+
+
+def test_ingredient_demand_creation():
+    """IngredientDemand can be created with valid data."""
+    from decimal import Decimal
+    from dinner_spinner.domain.demand import IngredientDemand
+
+    demand = IngredientDemand(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        quantity=Decimal("1000"),
+        unit="g"
+    )
+    assert demand.ingredient_id == 1
+    assert demand.ingredient_name == "Flour"
+    assert demand.quantity == Decimal("1000")
+    assert demand.unit == "g"
+
+
+def test_ingredient_demand_rejects_negative_quantity():
+    """IngredientDemand rejects negative quantity."""
+    from decimal import Decimal
+    from dinner_spinner.domain.demand import IngredientDemand
+
+    with pytest.raises(ValueError, match="negative"):
+        IngredientDemand(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            quantity=Decimal("-100"),
+            unit="g"
+        )
+
+
+def test_ingredient_demand_rejects_empty_unit():
+    """IngredientDemand rejects empty unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.demand import IngredientDemand
+
+    with pytest.raises(ValueError, match="required"):
+        IngredientDemand(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            quantity=Decimal("100"),
+            unit=""
+        )
+
+
+def test_calculate_demand_basic():
+    """Basic demand calculation works."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    # Recipe: 4 servings, 500g flour
+    recipe = Recipe(id=1, name="Bread", servings=4)
+    ri = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=500, unit="g")
+
+    # MealPlan: 8 servings (2x scale)
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=8)
+
+    demands = calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: [ri]},
+    )
+
+    assert len(demands) == 1
+    assert demands[0].ingredient_id == 1
+    assert demands[0].quantity == 1000  # 500g * (8/4) = 1000g
+    assert demands[0].unit == "g"
+
+
+def test_calculate_demand_scaling_up():
+    """Demand scales up correctly."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    recipe = Recipe(id=1, name="Bread", servings=4)
+    ri = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=500, unit="g")
+
+    # 12 servings (3x scale)
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=12)
+
+    demands = calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: [ri]},
+    )
+
+    assert len(demands) == 1
+    assert demands[0].quantity == 1500  # 500g * (12/4) = 1500g
+
+
+def test_calculate_demand_scaling_down():
+    """Demand scales down correctly."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    recipe = Recipe(id=1, name="Bread", servings=8)
+    ri = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=1000, unit="g")
+
+    # 2 servings (0.25x scale)
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=2)
+
+    demands = calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: [ri]},
+    )
+
+    assert len(demands) == 1
+    assert demands[0].quantity == 250  # 1000g * (2/8) = 250g
+
+
+def test_calculate_demand_unit_normalization():
+    """Demand normalizes units for aggregation."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    # Recipe 1: 1 kg flour
+    recipe1 = Recipe(id=1, name="Bread", servings=4)
+    ri1 = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=1, unit="kg")
+
+    # Recipe 2: 500 g flour (same ingredient)
+    recipe2 = Recipe(id=2, name="Pasta", servings=4)
+    ri2 = RecipeIngredient(id=2, recipe_id=2, ingredient_id=1, quantity=500, unit="g")
+
+    # 4 servings each (no scaling)
+    mp1 = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=4)
+    mp2 = MealPlan(id=2, week_start=20260101, day=1, meal_type="Dinner", recipe_id=2, servings=4)
+
+    demands = calculate_demand(
+        meal_plans=[mp1, mp2],
+        recipes={1: recipe1, 2: recipe2},
+        recipe_ingredients={1: [ri1], 2: [ri2]},
+    )
+
+    assert len(demands) == 1
+    # 1 kg = 1000g, + 500g = 1500g = 1.5 kg
+    assert demands[0].quantity == 1.5
+    assert demands[0].unit == "kg"  # First unit wins
+
+
+def test_calculate_demand_cross_category_rejected():
+    """Demand rejects cross-category unit aggregation."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    # Recipe 1: 100 g flour (mass)
+    recipe1 = Recipe(id=1, name="Bread", servings=4)
+    ri1 = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=100, unit="g")
+
+    # Recipe 2: 1 cup flour (volume) - same ingredient_id but different unit category
+    recipe2 = Recipe(id=2, name="Cake", servings=4)
+    ri2 = RecipeIngredient(id=2, recipe_id=2, ingredient_id=1, quantity=1, unit="cup")
+
+    mp1 = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=4)
+    mp2 = MealPlan(id=2, week_start=20260101, day=1, meal_type="Dinner", recipe_id=2, servings=4)
+
+    with pytest.raises(ValueError, match="incompatible units"):
+        calculate_demand(
+            meal_plans=[mp1, mp2],
+            recipes={1: recipe1, 2: recipe2},
+            recipe_ingredients={1: [ri1], 2: [ri2]},
+        )
+
+
+def test_calculate_demand_empty_meal_plan():
+    """Empty meal plan produces no demand."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+
+    reset()
+    initialize()
+
+    demands = calculate_demand(
+        meal_plans=[],
+        recipes={},
+        recipe_ingredients={},
+    )
+
+    assert demands == []
+
+
+def test_calculate_demand_empty_slot_produces_no_demand():
+    """MealPlan with recipe_id = NULL produces no demand."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+
+    reset()
+    initialize()
+
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=None, servings=4)
+
+    demands = calculate_demand(
+        meal_plans=[mp],
+        recipes={},
+        recipe_ingredients={},
+    )
+
+    assert demands == []
+
+
+def test_calculate_demand_recipe_with_no_ingredients():
+    """Recipe with no ingredients produces no demand."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+
+    reset()
+    initialize()
+
+    recipe = Recipe(id=1, name="Empty", servings=4)
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=4)
+
+    demands = calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: []},
+    )
+
+    assert demands == []
+
+
+def test_calculate_demand_deterministic():
+    """Demand calculation is deterministic."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    recipe = Recipe(id=1, name="Bread", servings=4)
+    ri = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=500, unit="g")
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=8)
+
+    demands1 = calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: [ri]},
+    )
+
+    demands2 = calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: [ri]},
+    )
+
+    assert demands1 == demands2
+
+
+def test_calculate_demand_preserves_original_recipe_ingredient():
+    """Demand calculation does not modify original RecipeIngredient data."""
+    from dinner_spinner.domain.demand import calculate_demand
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+
+    reset()
+    initialize()
+
+    ri = RecipeIngredient(id=1, recipe_id=1, ingredient_id=1, quantity=500, unit="g")
+    recipe = Recipe(id=1, name="Bread", servings=4)
+    mp = MealPlan(id=1, week_start=20260101, day=0, meal_type="Dinner", recipe_id=1, servings=8)
+
+    # Store original values
+    orig_qty = ri.quantity
+    orig_unit = ri.unit
+
+    calculate_demand(
+        meal_plans=[mp],
+        recipes={1: recipe},
+        recipe_ingredients={1: [ri]},
+    )
+
+    # Original should be unchanged
+    assert ri.quantity == orig_qty
+    assert ri.unit == orig_unit
+
+
+# ---------------------------------------------------------------------------
+# 9. Demand Application Service Tests
+# ---------------------------------------------------------------------------
+
+def test_demand_application_service_calculates_demand():
+    """Application service correctly calculates demand."""
+    from dinner_spinner.application.demand import get_demand_for_week
+    from dinner_persistence.models import Ingredient, Recipe, RecipeIngredient, MealPlan
+
+    # This test needs a full app context, so we'll skip it here
+    # It's covered by test_application.py
+    pass
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

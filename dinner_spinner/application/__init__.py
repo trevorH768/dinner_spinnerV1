@@ -13,6 +13,15 @@ from dinner_spinner.application.inventory_events import (
     IngredientNotFoundError,
     UnitSystemNotInitializedError,
 )
+from dinner_spinner.application.demand import (
+    calculate_weekly_demand,
+    get_demand_for_week,
+    DemandCalculationError,
+    MissingRecipeError,
+    IncompatibleUnitsError,
+    IngredientNotFoundError as DemandIngredientNotFoundError,
+    UnitSystemNotInitializedError as DemandUnitSystemNotInitializedError,
+)
 
 __all__ = [
     "record_acquisition",
@@ -26,4 +35,11 @@ __all__ = [
     "InsufficientInventoryError",
     "IngredientNotFoundError",
     "UnitSystemNotInitializedError",
+    "calculate_weekly_demand",
+    "get_demand_for_week",
+    "DemandCalculationError",
+    "MissingRecipeError",
+    "IncompatibleUnitsError",
+    "DemandIngredientNotFoundError",
+    "DemandUnitSystemNotInitializedError",
 ]

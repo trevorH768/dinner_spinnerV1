@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Demand - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Ingredient Demand</h2>
+        <div>
+            <form method="GET" action="{{ url_for('main.demand_week') }}" style="display: inline;">
+                <label for="week_start">Week: </label>
+                <input type="date" id="week_start" name="week_start" value="{{ week_start | dateformat }}">
+                <button type="submit">View</button>
+            </form>
+        </div>
+    </div>
+
+    {% if demands %}
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ingredient</th>
+                    <th>Required Quantity</th>
+                    <th>Unit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for demand in demands %}
+                <tr>
+                    <td>{{ demand.ingredient_name }}</td>
+                    <td>{{ "%.3f"|format(demand.quantity) }}</td>
+                    <td>{{ demand.unit }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card">
+        <p>No demand for this week. Add meals to the meal plan to see demand.</p>
+        <a href="{{ url_for('main.meal_plan') }}"><button>Go to Meal Plan</button></a>
+    </div>
+    {% endif %}
+{% endblock %}

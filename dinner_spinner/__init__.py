@@ -3,6 +3,7 @@
 from flask import Flask
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
+from datetime import datetime
 
 
 @event.listens_for(Engine, "connect")
@@ -13,9 +14,23 @@ def _enable_sqlite_fk(dbapi_connection, connection_record):
     cursor.close()
 
 
+def _format_week_start(value):
+    """Format YYYYMMDD integer as readable date string."""
+    if not value:
+        return ""
+    try:
+        dt = datetime.strptime(str(value), "%Y%m%d")
+        return dt.strftime("%b %d, %Y")
+    except (ValueError, TypeError):
+        return str(value)
+
+
 def create_app(config=None):
     """Create and configure the Flask application."""
     app = Flask(__name__)
+
+    # Add custom template filters
+    app.jinja_env.filters['dateformat'] = _format_week_start
 
     # Default configuration
     import os

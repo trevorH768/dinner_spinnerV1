@@ -615,3 +615,33 @@ def ingredient_waste(id):
 
     categories = db.session.query(InventoryCategory).order_by(InventoryCategory.name).all()
     return render_template("waste_form.html", ingredient=ingredient, categories=categories)
+
+
+# =============================================================================
+# Slice 3: Demand Routes
+# =============================================================================
+
+@bp.route("/demand")
+def demand_index():
+    """Demand overview - shows demand for the current week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.demand import get_demand_for_week
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    week_start = int((today - timedelta(days=today.weekday())).strftime("%Y%m%d"))
+
+    demands = get_demand_for_week(db.session, week_start)
+
+    return render_template("demand_index.html", demands=demands, week_start=week_start)
+
+
+@bp.route("/demand/<int:week_start>")
+def demand_week(week_start):
+    """Demand view for a specific week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.demand import get_demand_for_week
+
+    demands = get_demand_for_week(db.session, week_start)
+
+    return render_template("demand_index.html", demands=demands, week_start=week_start)
