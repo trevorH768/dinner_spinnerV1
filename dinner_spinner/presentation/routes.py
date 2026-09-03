@@ -645,3 +645,33 @@ def demand_week(week_start):
     demands = get_demand_for_week(db.session, week_start)
 
     return render_template("demand_index.html", demands=demands, week_start=week_start)
+
+
+# =============================================================================
+# Slice 4: Inventory Requirement Routes
+# =============================================================================
+
+@bp.route("/requirements")
+def requirements_index():
+    """Inventory requirements overview - shows requirements for the current week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.inventory_requirements import get_inventory_requirements_for_week
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    week_start = int((today - timedelta(days=today.weekday())).strftime("%Y%m%d"))
+
+    requirements = get_inventory_requirements_for_week(db.session, week_start)
+
+    return render_template("requirements_index.html", requirements=requirements, week_start=week_start)
+
+
+@bp.route("/requirements/<int:week_start>")
+def requirements_week(week_start):
+    """Requirements view for a specific week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.inventory_requirements import get_inventory_requirements_for_week
+
+    requirements = get_inventory_requirements_for_week(db.session, week_start)
+
+    return render_template("requirements_index.html", requirements=requirements, week_start=week_start)

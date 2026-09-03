@@ -1340,5 +1340,493 @@ def test_demand_application_service_calculates_demand():
     pass
 
 
+# ---------------------------------------------------------------------------
+# 10. Slice 4: Inventory Requirement Tests
+# ---------------------------------------------------------------------------
+
+def test_ingredient_requirement_creation():
+    """IngredientRequirement can be created with valid data."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import IngredientRequirement
+
+    req = IngredientRequirement(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        demand_quantity=Decimal("1000"),
+        demand_unit="g",
+        available_quantity=Decimal("500"),
+        available_unit="g",
+        net_requirement_quantity=Decimal("500"),
+        net_requirement_unit="g",
+    )
+    assert req.ingredient_id == 1
+    assert req.ingredient_name == "Flour"
+    assert req.demand_quantity == Decimal("1000")
+    assert req.demand_unit == "g"
+    assert req.available_quantity == Decimal("500")
+    assert req.available_unit == "g"
+    assert req.net_requirement_quantity == Decimal("500")
+    assert req.net_requirement_unit == "g"
+
+
+def test_ingredient_requirement_rejects_negative_demand():
+    """IngredientRequirement rejects negative demand quantity."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import IngredientRequirement
+
+    with pytest.raises(ValueError, match="negative"):
+        IngredientRequirement(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            demand_quantity=Decimal("-100"),
+            demand_unit="g",
+            available_quantity=Decimal("500"),
+            available_unit="g",
+            net_requirement_quantity=Decimal("500"),
+            net_requirement_unit="g",
+        )
+
+
+def test_ingredient_requirement_rejects_negative_available():
+    """IngredientRequirement rejects negative available quantity."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import IngredientRequirement
+
+    with pytest.raises(ValueError, match="negative"):
+        IngredientRequirement(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            demand_quantity=Decimal("1000"),
+            demand_unit="g",
+            available_quantity=Decimal("-100"),
+            available_unit="g",
+            net_requirement_quantity=Decimal("500"),
+            net_requirement_unit="g",
+        )
+
+
+def test_ingredient_requirement_rejects_negative_net():
+    """IngredientRequirement rejects negative net requirement quantity."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import IngredientRequirement
+
+    with pytest.raises(ValueError, match="negative"):
+        IngredientRequirement(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            demand_quantity=Decimal("1000"),
+            demand_unit="g",
+            available_quantity=Decimal("500"),
+            available_unit="g",
+            net_requirement_quantity=Decimal("-100"),
+            net_requirement_unit="g",
+        )
+
+
+def test_ingredient_requirement_rejects_empty_units():
+    """IngredientRequirement rejects empty units."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import IngredientRequirement
+
+    with pytest.raises(ValueError, match="required"):
+        IngredientRequirement(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            demand_quantity=Decimal("1000"),
+            demand_unit="",
+            available_quantity=Decimal("500"),
+            available_unit="g",
+            net_requirement_quantity=Decimal("500"),
+            net_requirement_unit="g",
+        )
+
+    with pytest.raises(ValueError, match="required"):
+        IngredientRequirement(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            demand_quantity=Decimal("1000"),
+            demand_unit="g",
+            available_quantity=Decimal("500"),
+            available_unit="",
+            net_requirement_quantity=Decimal("500"),
+            net_requirement_unit="g",
+        )
+
+    with pytest.raises(ValueError, match="required"):
+        IngredientRequirement(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            demand_quantity=Decimal("1000"),
+            demand_unit="g",
+            available_quantity=Decimal("500"),
+            available_unit="g",
+            net_requirement_quantity=Decimal("500"),
+            net_requirement_unit="",
+        )
+
+
+def test_calculate_inventory_requirements_demand_greater_than_inventory():
+    """Demand greater than inventory produces positive net requirement."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("2000"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("1200"), "g")}
+
+    reqs = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("1200"), "g")})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.ingredient_id == 1
+    assert req.ingredient_name == "Flour"
+    assert req.demand_quantity == Decimal("2000")
+    assert req.demand_unit == "g"
+    assert req.available_quantity == Decimal("1200")
+    assert req.available_unit == "g"
+    assert req.net_requirement_quantity == Decimal("800")
+    assert req.net_requirement_unit == "g"
+
+
+def test_calculate_inventory_requirements_demand_equals_inventory():
+    """Demand equals inventory produces zero net requirement."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("1000"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("1000"), "g")}
+
+    reqs = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("1000"), "g")})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.net_requirement_quantity == Decimal("0")
+    assert req.net_requirement_unit == "g"
+
+
+def test_calculate_inventory_requirements_inventory_greater_than_demand():
+    """Inventory greater than demand produces zero net requirement (surplus)."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("1000"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("1500"), "g")}
+
+    reqs = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("1500"), "g")})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.net_requirement_quantity == Decimal("0")
+    assert req.net_requirement_unit == "g"
+    # Available quantity should reflect the actual inventory
+    assert req.available_quantity == Decimal("1500")
+
+
+def test_calculate_inventory_requirements_zero_inventory():
+    """Zero inventory produces full demand as net requirement."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("1000"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("0"), "g")}
+
+    reqs = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("0"), "g")})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.net_requirement_quantity == Decimal("1000")
+    assert req.net_requirement_unit == "g"
+    assert req.available_quantity == Decimal("0")
+
+
+def test_calculate_inventory_requirements_cross_unit_conversion():
+    """Inventory requirement handles cross-unit conversion (kg vs g)."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    # Demand in kg, inventory in g
+    demands = [IngredientDemand(1, "Flour", Decimal("2"), "kg")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("1500"), "g")}
+
+    reqs = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("1500"), "g")})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    # 2kg = 2000g, available 1500g, net = 500g = 0.5kg
+    assert req.net_requirement_quantity == Decimal("0.5")
+    assert req.net_requirement_unit == "kg"  # Uses demand's unit
+
+
+def test_calculate_inventory_requirements_cross_category_rejected():
+    """Cross-category unit aggregation is rejected."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("100"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("500"), "ml")}
+
+    with pytest.raises(ValueError, match="incompatible"):
+        calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("500"), "ml")})
+
+
+def test_calculate_inventory_requirements_demand_only_ingredient():
+    """Demand-only ingredient (no inventory) produces full demand as net requirement."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("1000"), "g")]
+    # No inventory record for this ingredient
+    ingredients = {}
+
+    reqs = calculate_inventory_requirements(demands, {})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.net_requirement_quantity == Decimal("1000")
+    assert req.net_requirement_unit == "g"
+    assert req.available_quantity == Decimal("0")
+
+
+def test_calculate_inventory_requirements_inventory_only_no_demand():
+    """Inventory-only ingredient (no demand) is not included in requirements."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    # Demand for flour only
+    demands = [IngredientDemand(1, "Flour", Decimal("1000"), "g")]
+    # Inventory has both flour and sugar, but only flour has demand
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("500"), "g"),
+        2: Ingredient(2, "Sugar", None, Decimal("2000"), "g"),
+    }
+
+    reqs = calculate_inventory_requirements(demands, ingredients)
+
+    assert len(reqs) == 1
+    assert reqs[0].ingredient_id == 1
+    assert reqs[0].ingredient_name == "Flour"
+
+
+def test_calculate_inventory_requirements_multiple_ingredients():
+    """Multiple ingredients aggregated correctly."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [
+        IngredientDemand(1, "Flour", Decimal("2000"), "g"),
+        IngredientDemand(2, "Sugar", Decimal("1000"), "g"),
+    ]
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("500"), "g"),
+        2: Ingredient(2, "Sugar", None, Decimal("1500"), "g"),
+    }
+
+    reqs = calculate_inventory_requirements(demands, ingredients)
+
+    assert len(reqs) == 2
+    # Flour: 2000 - 500 = 1500g needed
+    assert reqs[0].ingredient_id == 1
+    assert reqs[0].net_requirement_quantity == Decimal("1500")
+    # Sugar: 1000 - 1500 = 0 (surplus)
+    assert reqs[1].ingredient_id == 2
+    assert reqs[1].net_requirement_quantity == Decimal("0")
+
+
+def test_calculate_inventory_requirements_cross_category_rejected():
+    """Incompatible units between demand and inventory are rejected."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("100"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("500"), "ml")}
+
+    with pytest.raises(ValueError, match="Cannot compare demand"):
+        calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("500"), "ml")})
+
+
+def test_calculate_inventory_requirements_preserves_original_data():
+    """Calculation does not modify original demand or ingredient objects."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demand = IngredientDemand(1, "Flour", Decimal("1000"), "g")
+    ingredient = Ingredient(1, "Flour", None, Decimal("500"), "g")
+
+    orig_demand_qty = demand.quantity
+    orig_demand_unit = demand.unit
+    orig_ing_qty = ingredient.quantity
+    orig_ing_unit = ingredient.unit
+
+    calculate_inventory_requirements([demand], {1: ingredient})
+
+    # Original objects unchanged
+    assert demand.quantity == orig_demand_qty
+    assert demand.unit == orig_demand_unit
+    assert ingredient.quantity == orig_ing_qty
+    assert ingredient.unit == orig_ing_unit
+
+
+def test_calculate_inventory_requirements_deterministic():
+    """Same inputs always produce same outputs."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    demands = [IngredientDemand(1, "Flour", Decimal("1000"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("500"), "g")}
+
+    reqs1 = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("500"), "g")})
+    reqs2 = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("500"), "g")})
+
+    assert reqs1 == reqs2
+
+
+def test_calculate_inventory_requirements_empty_demand():
+    """Empty demand list produces empty requirements."""
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+
+    reset()
+    initialize()
+
+    reqs = calculate_inventory_requirements([], {})
+    assert reqs == []
+
+
+# ---------------------------------------------------------------------------
+# 11. Slice 4 Architecture Tests
+# ---------------------------------------------------------------------------
+
+def test_no_available_inventory_entity():
+    """No AvailableInventory entity in domain."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    assert "AvailableInventory" not in domain_exports
+
+
+def test_no_net_requirement_entity():
+    """No NetRequirement entity in domain."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    assert "NetRequirement" not in domain_exports
+
+
+def test_no_inventory_requirement_entity():
+    """No InventoryRequirement entity in domain exports (it's a projection)."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    # IngredientRequirement is a projection, not an authoritative entity
+    # It's used for calculation results only
+    assert "InventoryRequirement" not in domain_exports
+
+
+def test_no_shopping_list_entity_in_domain():
+    """ShoppingList not in domain."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    assert "ShoppingList" not in domain_exports
+
+
+def test_no_transfer_entity():
+    """No Transfer entity."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    assert "Transfer" not in domain_exports
+
+
+def test_no_location_entity():
+    """No Location entity."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    assert "Location" not in domain_exports
+
+
+def test_no_container_entity():
+    """No Container entity."""
+    from dinner_spinner.domain import __all__ as domain_exports
+    assert "Container" not in domain_exports
+
+
+def test_no_shopping_list_persistence_model():
+    """No ShoppingList persistence model."""
+    from dinner_persistence.models import Base
+    tables = Base.metadata.tables.keys()
+    assert "shopping_list" not in tables
+    assert "shopping_list_item" not in tables
+
+
+def test_no_available_inventory_persistence_model():
+    """No AvailableInventory persistence model."""
+    from dinner_persistence.models import Base
+    tables = Base.metadata.tables.keys()
+    assert "available_inventory" not in tables
+    assert "net_requirement" not in tables
+    assert "inventory_requirement" not in tables
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

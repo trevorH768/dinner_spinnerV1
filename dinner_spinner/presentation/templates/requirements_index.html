@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Requirements - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Inventory Requirements</h2>
+        <div>
+            <form method="GET" action="{{ url_for('main.requirements_week') }}" style="display: inline;">
+                <label for="week_start">Week: </label>
+                <input type="date" id="week_start" name="week_start" value="{{ week_start | dateformat }}">
+                <button type="submit">View</button>
+            </form>
+        </div>
+    </div>
+
+    {% if requirements %}
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ingredient</th>
+                    <th>Demand</th>
+                    <th>Available</th>
+                    <th>Needed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requirements %}
+                <tr>
+                    <td>{{ req.ingredient_name }}</td>
+                    <td>{{ "%.3f"|format(req.demand_quantity) }} {{ req.demand_unit }}</td>
+                    <td>{{ "%.3f"|format(req.available_quantity) }} {{ req.available_unit }}</td>
+                    <td style="color: {% if req.net_requirement_quantity > 0 %}#dc3545{% else %}#28a745{% endif %}; font-weight: bold;">
+                        {{ "%.3f"|format(req.net_requirement_quantity) }} {{ req.net_requirement_unit }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card">
+        <p>No requirements for this week. Add meals to the meal plan to see requirements.</p>
+        <a href="{{ url_for('main.meal_plan') }}"><button>Go to Meal Plan</button></a>
+    </div>
+    {% endif %}
+{% endblock %}
