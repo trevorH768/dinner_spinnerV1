@@ -1,6 +1,16 @@
 """Dinner Spinner V1 — Flask application factory."""
 
 from flask import Flask
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_fk(dbapi_connection, connection_record):
+    """Enable SQLite foreign key enforcement for every connection."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    cursor.close()
 
 
 def create_app(config=None):
@@ -8,9 +18,11 @@ def create_app(config=None):
     app = Flask(__name__)
 
     # Default configuration
+    import os
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'dinner_spinner.db')
     app.config.update(
         SECRET_KEY="dev-secret-change-in-production",
-        SQLALCHEMY_DATABASE_URI="sqlite:///dinner_spinner.db",
+        SQLALCHEMY_DATABASE_URI=f"sqlite:///{db_path}",
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
     )
 
@@ -25,10 +37,6 @@ def create_app(config=None):
     # Import Base from models (avoids circular import)
     from dinner_persistence.models import Base
     db.Model = Base
-
-    # Create tables (for development; migrations used in production)
-    with app.app_context():
-        db.create_all()
 
     # Initialize the unit system
     from dinner_spinner.domain.unit_system import initialize

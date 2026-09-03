@@ -1,8 +1,8 @@
-"""Initial V1 schema
+"""Initial V1 schema with correct FKs
 
-Revision ID: 96ef4328f9e2
+Revision ID: 7e088400ecec
 Revises: 
-Create Date: 2026-09-03 09:06:24.508444
+Create Date: 2026-09-03 12:55:33.669648
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '96ef4328f9e2'
+revision: str = '7e088400ecec'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -34,6 +34,7 @@ def upgrade() -> None:
     sa.Column('servings', sa.Integer(), nullable=False),
     sa.Column('instructions', sa.String(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.CheckConstraint('servings > 0', name='ck_recipe_servings_positive'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('ingredient',

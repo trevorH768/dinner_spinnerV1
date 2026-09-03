@@ -11,7 +11,7 @@ Ingredient represents the household's current inventory state.  The Ingredient
 itself is the inventory holding.  There is no separate Container entity in V1.
 """
 
-from dinner_spinner.domain.unit_system import validate_unit, is_initialized
+from dinner_spinner.domain.unit_system import validate_unit, is_initialized, convert, category_of
 
 
 class Ingredient:
@@ -62,3 +62,48 @@ class Ingredient:
     def __hash__(self):
         return hash((self.id, self.name, self.inventory_category_id,
                      self.quantity, self.unit))
+
+    def change_unit(self, target_unit: str) -> None:
+        """Change the unit of this ingredient, preserving the physical quantity.
+
+        Uses the centralized UnitSystem for conversion. Validates that the
+        target unit is recognized and compatible with the current unit.
+        Rejects incompatible conversions (cross-category without density).
+        Leaves the ingredient unchanged if conversion fails.
+
+        Args:
+            target_unit: The new unit to convert to (e.g., "kg", "ml", "each")
+
+        Raises:
+            ValueError: If target_unit is invalid, not recognized, or incompatible
+                       with current unit (different measurement category).
+        """
+        if not target_unit or not target_unit.strip():
+            raise ValueError("Target unit is required")
+
+        target_unit = target_unit.strip()
+
+        if target_unit == self.unit:
+            return  # no change needed
+
+        if not is_initialized():
+            raise RuntimeError("UnitSystem not initialized; call initialize() first")
+
+        if not validate_unit(target_unit):
+            raise ValueError(f"Unit '{target_unit}' is not a recognized unit")
+
+        # Check category compatibility
+        from_cat = category_of(self.unit)
+        to_cat = category_of(target_unit)
+        if from_cat != to_cat:
+            raise ValueError(
+                f"Cannot convert '{self.unit}' to '{target_unit}': "
+                "different measurement categories (requires density information)"
+            )
+
+        # Perform conversion: new_quantity = old_quantity * conversion_factor
+        new_quantity = convert(self.quantity, self.unit, target_unit)
+
+        # Update in place - preserve represented physical quantity
+        self.quantity = new_quantity
+        self.unit = target_unit

@@ -95,7 +95,7 @@ def initialize() -> None:
 def validate_unit(unit: str) -> bool:
     """Return True if *unit* is a recognized canonical unit."""
     if not _IS_INITIALIZED:
-        return True  # be permissive until initialized
+        raise RuntimeError("UnitSystem not initialized; call initialize() first")
     return unit.strip().lower() in _UNIT_TO_VALUE
 
 
@@ -107,9 +107,7 @@ def convert(value: float, from_unit: str, to_unit: str) -> float:
     Invalid units raise ValueError.
     """
     if not _IS_INITIALIZED:
-        if from_unit.strip().lower() == to_unit.strip().lower():
-            return value
-        raise ValueError("Unit system not initialized; cannot convert")
+        raise RuntimeError("Unit system not initialized; cannot convert")
 
     from_key = from_unit.strip().lower()
     to_key = to_unit.strip().lower()
@@ -149,3 +147,13 @@ def category_of(unit: str) -> str | None:
     if not _IS_INITIALIZED:
         return None
     return _UNIT_TO_CAT.get(unit.strip().lower())
+
+
+def reset() -> None:
+    """Reset the unit system to uninitialized state. For testing only."""
+    global _UNIT_DEFS, _UNIT_NAMES, _UNIT_TO_CAT, _UNIT_TO_VALUE, _IS_INITIALIZED
+    _UNIT_DEFS = {}
+    _UNIT_NAMES = {}
+    _UNIT_TO_CAT = {}
+    _UNIT_TO_VALUE = {}
+    _IS_INITIALIZED = False

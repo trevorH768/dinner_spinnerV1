@@ -41,11 +41,11 @@ class InventoryCategory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # One-to-many: a category may have many ingredients
+    # No cascade: FK ondelete="SET NULL" handles deletion; deleting category
+    # must not delete ingredients (V1_ARCHITECTURE.md lines 182-192)
     ingredients = relationship(
         "Ingredient",
         back_populates="inventory_category",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
     )
 
     def to_domain(self):
@@ -78,10 +78,12 @@ class Ingredient(Base):
     )
 
     # One-to-many: ingredient referenced by many RecipeIngredients
+    # No cascade: FK ondelete="RESTRICT" blocks deletion when referenced;
+    # deleting ingredient must not delete recipe_ingredients (V1_ARCHITECTURE.md
+    # lines 254-258, 167-169)
     recipe_ingredients = relationship(
         "RecipeIngredient",
         back_populates="ingredient",
-        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
@@ -127,10 +129,12 @@ class Recipe(Base):
     )
 
     # One-to-many (inverse): MealPlans referencing this recipe
+    # No cascade: FK ondelete="SET NULL" handles deletion; deleting recipe
+    # must not delete meal plans, must set recipe_id = NULL (V1_ARCHITECTURE.md
+    # lines 313-317)
     meal_plans = relationship(
         "MealPlan",
         back_populates="recipe",
-        cascade="delete",
     )
 
     __table_args__ = (

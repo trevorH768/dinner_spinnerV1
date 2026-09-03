@@ -114,10 +114,29 @@ def ingredient_edit(id):
         elif quantity < 0:
             flash("Quantity cannot be negative", "error")
         else:
+            # Use domain operation for unit change to preserve physical quantity
+            domain_ingredient = ingredient.to_domain()
+            domain_ingredient.quantity = quantity  # Update quantity first
+
+            if unit != ingredient.unit:
+                # Unit changed - use domain operation to preserve physical quantity
+                try:
+                    domain_ingredient.change_unit(unit)
+                except ValueError as e:
+                    flash(f"Unit change failed: {e}", "error")
+                    categories = db.session.query(InventoryCategory).order_by(InventoryCategory.name).all()
+                    return render_template("ingredient_form.html", categories=categories, ingredient=ingredient)
+                except RuntimeError as e:
+                    flash(f"Unit system error: {e}", "error")
+                    categories = db.session.query(InventoryCategory).order_by(InventoryCategory.name).all()
+                    return render_template("ingredient_form.html", categories=categories, ingredient=ingredient)
+
+            # Sync domain changes back to persistence model
             ingredient.name = name
-            ingredient.quantity = quantity
-            ingredient.unit = unit
+            ingredient.quantity = domain_ingredient.quantity
+            ingredient.unit = domain_ingredient.unit
             ingredient.inventory_category_id = category_id
+
             db.session.commit()
             flash("Ingredient updated", "success")
             return redirect(url_for("main.ingredients"))
@@ -138,20 +157,14 @@ def ingredient_delete(id):
         flash("Ingredient not found", "error")
         return redirect(url_for("main.ingredients"))
 
-    # Check if referenced by any recipe
-    ref_count = db.session.query(RecipeIngredient).filter(
-        RecipeIngredient.ingredient_id == id
-    ).count()
-
-    if ref_count > 0:
-        flash(
-            f"Cannot delete ingredient: referenced by {ref_count} recipe(s)",
-            "error"
-        )
-    else:
+    # Attempt deletion; DB RESTRICT FK will block if referenced
+    try:
         db.session.delete(ingredient)
         db.session.commit()
         flash("Ingredient deleted", "success")
+    except IntegrityError:
+        db.session.rollback()
+        flash("Cannot delete ingredient: referenced by one or more recipes", "error")
 
     return redirect(url_for("main.ingredients"))
 

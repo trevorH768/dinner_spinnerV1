@@ -8,6 +8,23 @@ import sys
 
 
 # ---------------------------------------------------------------------------
+# 0. Infrastructure Tests
+# ---------------------------------------------------------------------------
+
+def test_sqlite_foreign_keys_enforced():
+    """SQLite foreign key enforcement must be active (PRAGMA foreign_keys = ON)."""
+    from dinner_spinner import create_app
+    from sqlalchemy import text
+
+    app = create_app()
+    with app.app_context():
+        from flask import current_app
+        db = current_app.extensions['sqlalchemy']
+        result = db.session.execute(text('PRAGMA foreign_keys')).fetchone()
+        assert result[0] == 1, "SQLite foreign_keys PRAGMA not enabled"
+
+
+# ---------------------------------------------------------------------------
 # 1. Dependency Direction Tests
 # ---------------------------------------------------------------------------
 
@@ -228,6 +245,98 @@ def test_ingredient_no_second_inventory_abstraction():
     assert not hasattr(ing_mod, "IngredientInventory")
 
 
+def test_ingredient_change_unit_preserves_quantity():
+    """Ingredient.change_unit() preserves represented physical quantity."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    # Mass: kg -> g
+    ing = Ingredient(id=1, name="Flour", inventory_category_id=None, quantity=1, unit="kg")
+    ing.change_unit("g")
+    assert ing.quantity == 1000 and ing.unit == "g"
+
+    # Mass: g -> kg
+    ing = Ingredient(id=2, name="Sugar", inventory_category_id=None, quantity=500, unit="g")
+    ing.change_unit("kg")
+    assert ing.quantity == 0.5 and ing.unit == "kg"
+
+    # Volume: l -> ml
+    ing = Ingredient(id=3, name="Water", inventory_category_id=None, quantity=2, unit="l")
+    ing.change_unit("ml")
+    assert ing.quantity == 2000 and ing.unit == "ml"
+
+
+def test_ingredient_change_unit_rejects_cross_category():
+    """Ingredient.change_unit() rejects incompatible cross-category conversions."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Test", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="different measurement categories"):
+        ing.change_unit("ml")
+
+    ing = Ingredient(id=2, name="Test", inventory_category_id=None, quantity=1, unit="cup")
+    with pytest.raises(ValueError, match="different measurement categories"):
+        ing.change_unit("each")
+
+
+def test_ingredient_change_unit_rejects_invalid_unit():
+    """Ingredient.change_unit() rejects invalid/unrecognized units."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Test", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="not a recognized unit"):
+        ing.change_unit("invalid_unit")
+
+
+def test_ingredient_change_unit_rejects_empty():
+    """Ingredient.change_unit() rejects empty target unit."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Test", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(ValueError, match="Target unit is required"):
+        ing.change_unit("")
+
+
+def test_ingredient_change_unit_noop_same_unit():
+    """Ingredient.change_unit() is no-op when target equals current unit."""
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    ing = Ingredient(id=1, name="Test", inventory_category_id=None, quantity=100, unit="g")
+    ing.change_unit("g")
+    assert ing.quantity == 100 and ing.unit == "g"
+
+
+def test_ingredient_change_unit_requires_initialized():
+    """Ingredient.change_unit() raises if UnitSystem not initialized."""
+    from dinner_spinner.domain.unit_system import reset
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()  # uninitialized
+
+    ing = Ingredient(id=1, name="Test", inventory_category_id=None, quantity=100, unit="g")
+    with pytest.raises(RuntimeError, match="not initialized"):
+        ing.change_unit("kg")
+
+
 # ---------------------------------------------------------------------------
 # 4. Unit Boundary Tests
 # ---------------------------------------------------------------------------
@@ -249,11 +358,15 @@ def test_single_authoritative_unit_system():
     import dinner_spinner.domain.recipe_ingredient as ri_mod
 
     # Ingredient and RecipeIngredient should NOT have their own conversion logic
+    # Check only functions defined in the module itself (not imported)
     for mod in [ing_mod, ri_mod]:
         for attr in dir(mod):
             attr_lower = attr.lower()
             if "convert" in attr_lower and not attr.startswith("__"):
-                pytest.fail(f"{mod.__name__}.{attr} appears to define conversion logic")
+                obj = getattr(mod, attr)
+                # Only fail if the function is defined in this module, not imported
+                if getattr(obj, '__module__', None) == mod.__name__:
+                    pytest.fail(f"{mod.__name__}.{attr} appears to define conversion logic")
 
 
 def test_unit_system_has_three_categories():
@@ -319,6 +432,40 @@ def test_unit_system_no_universal_base_unit():
     for from_u, to_u in cross_category_pairs:
         with pytest.raises(ValueError):
             convert(1, from_u, to_u)
+
+
+def test_unit_system_uninitialized_validate_raises():
+    """validate_unit() must raise when UnitSystem not initialized."""
+    from dinner_spinner.domain.unit_system import validate_unit, is_initialized, reset
+
+    reset()  # Ensure uninitialized state
+    assert not is_initialized()
+
+    with pytest.raises(RuntimeError, match="not initialized"):
+        validate_unit("g")
+
+
+def test_unit_system_uninitialized_convert_raises():
+    """convert() must raise when UnitSystem not initialized."""
+    from dinner_spinner.domain.unit_system import convert, is_initialized, reset
+
+    reset()
+    assert not is_initialized()
+
+    with pytest.raises(RuntimeError, match="not initialized"):
+        convert(100, "g", "kg")
+
+
+def test_unit_system_initialized_then_works():
+    """After initialize(), validate_unit and convert work correctly."""
+    from dinner_spinner.domain.unit_system import initialize, validate_unit, convert, is_initialized, reset
+
+    reset()
+    initialize()
+    assert is_initialized()
+    assert validate_unit("g") is True
+    assert validate_unit("invalid") is False
+    assert convert(1, "kg", "g") == 1000
 
 
 # ---------------------------------------------------------------------------
