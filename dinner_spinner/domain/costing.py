@@ -86,28 +86,27 @@ class RecipeIngredientCost:
 class RecipeCost:
     """Total cost of a Recipe at its base servings.
 
+    Only complete recipe costs (all RecipeIngredients have available cost data)
+    are returned by calculate_recipe_costs. Incomplete recipes are excluded.
+
     Attributes:
         recipe_id: The Recipe's ID
         recipe_name: The Recipe's name
         base_servings: The Recipe's base serving yield
         ingredient_costs: List of RecipeIngredientCost objects
         total_cost: Sum of all line_cost values
-        is_complete: True if all RecipeIngredients have available cost data
     """
     recipe_id: int
     recipe_name: str
     base_servings: int
     ingredient_costs: tuple[RecipeIngredientCost, ...]
     total_cost: Decimal
-    is_complete: bool
 
     def __post_init__(self):
         if self.base_servings <= 0:
             raise ValueError("Base servings must be positive")
         if self.total_cost < 0:
             raise ValueError("Total cost cannot be negative")
-        if not self.is_complete and self.total_cost > 0:
-            raise ValueError("Incomplete recipe cost must have zero total cost")
 
 
 @dataclass(frozen=True)
@@ -134,7 +133,7 @@ class MealCost:
     def __post_init__(self):
         if self.planned_servings <= 0:
             raise ValueError("Planned servings must be positive")
-        if self.recipe_cost is not None and self.recipe_cost.is_complete and self.meal_cost is None:
+        if self.recipe_cost is not None and self.meal_cost is None:
             raise ValueError("Recipe cost available but meal cost not calculated")
         if self.recipe_cost is None and self.meal_cost is not None:
             raise ValueError("Meal cost calculated without recipe cost")
@@ -224,12 +223,17 @@ def calculate_ingredient_costs(
 ) -> list[IngredientCost]:
     """Calculate weighted average cost per unit for each Ingredient.
 
+    If an Ingredient has any Acquisition with a unit incompatible with the
+    Ingredient's unit, the entire Ingredient cost is unavailable (excluded
+    from results). Incompatible acquisitions are not silently ignored.
+
     Args:
         ingredients: Dict mapping ingredient_id -> Ingredient domain object
         acquisitions: List of Acquisition domain objects
 
     Returns:
-        List of IngredientCost objects, sorted by ingredient_id
+        List of IngredientCost objects for ingredients with valid cost data,
+        sorted by ingredient_id
 
     Raises:
         RuntimeError: If UnitSystem not initialized
@@ -254,7 +258,7 @@ def calculate_ingredient_costs(
 
         total_cost = Decimal('0')
         total_quantity = Decimal('0')
-        valid_acquisition_count = 0
+        has_incompatible = False
 
         for acq in ingredient_acquisitions:
             try:
@@ -266,16 +270,17 @@ def calculate_ingredient_costs(
                 )
                 total_cost += Decimal(str(acq.cost))
                 total_quantity += norm_qty
-                valid_acquisition_count += 1
             except ValueError:
-                # Skip acquisitions with incompatible units
-                continue
+                # Incompatible unit detected - mark ingredient as unavailable
+                has_incompatible = True
+                break
 
-        if valid_acquisition_count == 0 or total_quantity == 0:
-            # No valid acquisitions after filtering
+        if has_incompatible or total_quantity == 0:
+            # Incompatible acquisition or no valid quantity - cost unavailable
             continue
 
         cost_per_unit = total_cost / total_quantity
+        acquisition_count = len(ingredient_acquisitions)
 
         results.append(IngredientCost(
             ingredient_id=ingredient_id,
@@ -284,7 +289,7 @@ def calculate_ingredient_costs(
             cost_unit=ingredient.unit,
             total_acquisition_cost=total_cost,
             total_acquisition_quantity=total_quantity,
-            acquisition_count=valid_acquisition_count,
+            acquisition_count=acquisition_count,
         ))
 
     results.sort(key=lambda c: c.ingredient_id)
@@ -298,13 +303,18 @@ def calculate_recipe_costs(
 ) -> list[RecipeCost]:
     """Calculate total cost for each Recipe at base servings.
 
+    Only recipes where ALL RecipeIngredients have available cost data
+    with compatible units are returned. Recipes with any missing or
+    incompatible ingredient costs are excluded from results (returning
+    None for those recipes in the lookup).
+
     Args:
         recipes: Dict mapping recipe_id -> Recipe domain object
         recipe_ingredients: Dict mapping recipe_id -> list of RecipeIngredient domain objects
         ingredient_costs: List of IngredientCost objects (from calculate_ingredient_costs)
 
     Returns:
-        List of RecipeCost objects, sorted by recipe_id
+        List of RecipeCost objects for complete recipes only, sorted by recipe_id
 
     Raises:
         RuntimeError: If UnitSystem not initialized
@@ -322,14 +332,13 @@ def calculate_recipe_costs(
         ris = recipe_ingredients.get(recipe_id, [])
 
         if not ris:
-            # Recipe with no ingredients - cost is zero
+            # Recipe with no ingredients - cost is zero (complete)
             results.append(RecipeCost(
                 recipe_id=recipe_id,
                 recipe_name=recipe.name,
                 base_servings=recipe.servings,
                 ingredient_costs=(),
                 total_cost=Decimal('0'),
-                is_complete=True,
             ))
             continue
 
@@ -343,7 +352,7 @@ def calculate_recipe_costs(
             if ic is None:
                 # Ingredient cost unavailable
                 all_available = False
-                continue
+                break
 
             try:
                 # Convert RecipeIngredient quantity to cost unit
@@ -368,27 +377,17 @@ def calculate_recipe_costs(
             except ValueError:
                 # Incompatible units - cost unavailable
                 all_available = False
-                continue
+                break
 
-        if not all_available:
-            # Some required ingredient costs unavailable
-            results.append(RecipeCost(
-                recipe_id=recipe_id,
-                recipe_name=recipe.name,
-                base_servings=recipe.servings,
-                ingredient_costs=tuple(line_costs),
-                total_cost=Decimal('0'),
-                is_complete=False,
-            ))
-        else:
+        if all_available:
             results.append(RecipeCost(
                 recipe_id=recipe_id,
                 recipe_name=recipe.name,
                 base_servings=recipe.servings,
                 ingredient_costs=tuple(line_costs),
                 total_cost=total_cost,
-                is_complete=True,
             ))
+        # Incomplete recipes are excluded (no RecipeCost returned)
 
     results.sort(key=lambda c: c.recipe_id)
     return results
@@ -407,7 +406,7 @@ def calculate_meal_costs(
         recipe_costs: List of RecipeCost objects (from calculate_recipe_costs)
 
     Returns:
-        List of MealCost objects, sorted by (day, meal_type)
+        List of MealCost objects, sorted by meal_plan_id
 
     Raises:
         ValueError: If invalid data
@@ -447,15 +446,15 @@ def calculate_meal_costs(
 
         recipe_cost = recipe_cost_lookup.get(mp.recipe_id)
 
-        if recipe_cost is None or not recipe_cost.is_complete:
-            # Recipe cost unavailable
+        if recipe_cost is None:
+            # Recipe cost unavailable (incomplete or no cost data)
             results.append(MealCost(
                 meal_plan_id=mp.id,
                 recipe_id=mp.recipe_id,
                 recipe_name=recipe.name,
                 planned_servings=mp.servings,
                 base_servings=recipe.servings,
-                recipe_cost=recipe_cost,
+                recipe_cost=None,
                 meal_cost=None,
             ))
         else:
@@ -473,15 +472,8 @@ def calculate_meal_costs(
                 meal_cost=meal_cost,
             ))
 
-    # Sort by day then meal_type for consistent presentation
-    meal_type_order = {"Breakfast": 0, "Lunch": 1, "Dinner": 2}
-    results.sort(key=lambda m: (m.recipe_id or 0, m.planned_servings))
-    results.sort(key=lambda m: (m.meal_plan_id, meal_type_order.get(m.recipe_name, 99)))
-    # Better sort: by day, meal_type
-    results.sort(key=lambda m: (
-        # We don't have day/meal_type in MealCost, so sort by meal_plan_id which preserves order
-        m.meal_plan_id
-    ))
+    # Sort by meal_plan_id for consistent presentation
+    results.sort(key=lambda m: m.meal_plan_id)
 
     return results
 

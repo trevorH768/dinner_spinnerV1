@@ -70,6 +70,7 @@ def test_domain_does_not_import_presentation():
         dinner_spinner.domain.unit_system,
         dinner_spinner.domain.demand,
         dinner_spinner.domain.inventory_requirement,
+        dinner_spinner.domain.costing,
     ]:
         for name in mod.__dict__:
             if "presentation" in str(name).lower():
@@ -90,6 +91,7 @@ def test_domain_does_not_import_http():
         "dinner_spinner.domain.unit_system",
         "dinner_spinner.domain.demand",
         "dinner_spinner.domain.inventory_requirement",
+        "dinner_spinner.domain.costing",
     ]:
         mod = sys.modules[mod_name]
         for attr in dir(mod):
@@ -111,6 +113,7 @@ def test_domain_does_not_import_database_session():
         "dinner_spinner.domain.unit_system",
         "dinner_spinner.domain.demand",
         "dinner_spinner.domain.inventory_requirement",
+        "dinner_spinner.domain.costing",
     ]:
         mod = sys.modules[mod_name]
         for attr in dir(mod):
@@ -132,6 +135,7 @@ def test_domain_does_not_import_external_food_providers():
         "dinner_spinner.domain.unit_system",
         "dinner_spinner.domain.demand",
         "dinner_spinner.domain.inventory_requirement",
+        "dinner_spinner.domain.costing",
     ]:
         mod = sys.modules[mod_name]
         for attr in dir(mod):
@@ -2017,27 +2021,9 @@ def test_recipe_cost_creation():
         base_servings=4,
         ingredient_costs=(line_cost,),
         total_cost=Decimal("0.50"),
-        is_complete=True,
     )
     assert cost.recipe_id == 1
     assert cost.total_cost == Decimal("0.50")
-    assert cost.is_complete is True
-
-
-def test_recipe_cost_incomplete_must_have_zero_total():
-    """Incomplete RecipeCost must have zero total cost."""
-    from decimal import Decimal
-    from dinner_spinner.domain.costing import RecipeCost
-
-    with pytest.raises(ValueError, match="zero total cost"):
-        RecipeCost(
-            recipe_id=1,
-            recipe_name="Bread",
-            base_servings=4,
-            ingredient_costs=(),
-            total_cost=Decimal("1.00"),
-            is_complete=False,
-        )
 
 
 def test_meal_cost_creation():
@@ -2061,7 +2047,6 @@ def test_meal_cost_creation():
         base_servings=4,
         ingredient_costs=(line_cost,),
         total_cost=Decimal("0.50"),
-        is_complete=True,
     )
     meal_cost = MealCost(
         meal_plan_id=1,
@@ -2114,7 +2099,6 @@ def test_meal_cost_rejects_mismatched_recipe_and_meal_cost():
         base_servings=4,
         ingredient_costs=(line_cost,),
         total_cost=Decimal("0.50"),
-        is_complete=True,
     )
 
     with pytest.raises(ValueError, match="meal cost not calculated"):
@@ -2221,8 +2205,8 @@ def test_calculate_ingredient_costs_acquisition_unit_conversion():
     assert costs[0].cost_per_unit == Decimal("10.00")
 
 
-def test_calculate_ingredient_costs_skips_incompatible_acquisition_units():
-    """Incompatible acquisition units are skipped."""
+def test_calculate_ingredient_costs_incompatible_acquisition_excludes_ingredient():
+    """Ingredient cost unavailable when any acquisition has incompatible unit."""
     from decimal import Decimal
     from dinner_spinner.domain.unit_system import initialize, reset
     from dinner_spinner.domain.ingredient import Ingredient
@@ -2244,11 +2228,8 @@ def test_calculate_ingredient_costs_skips_incompatible_acquisition_units():
 
     costs = calculate_ingredient_costs(ingredients, acquisitions)
 
-    assert len(costs) == 1
-    # Only the g acquisition counted
-    assert costs[0].total_acquisition_quantity == Decimal("1000")
-    assert costs[0].total_acquisition_cost == Decimal("10.00")
-    assert costs[0].acquisition_count == 1
+    # Incompatible acquisition makes entire ingredient cost unavailable
+    assert len(costs) == 0
 
 
 def test_calculate_ingredient_costs_no_acquisitions_excluded():
@@ -2307,7 +2288,6 @@ def test_calculate_recipe_costs_basic():
     assert len(costs) == 1
     assert costs[0].recipe_id == 1
     assert costs[0].total_cost == Decimal("5.00")  # 500g * $0.01/g = $5
-    assert costs[0].is_complete is True
     assert len(costs[0].ingredient_costs) == 1
 
 
@@ -2374,11 +2354,8 @@ def test_calculate_recipe_costs_incomplete_when_ingredient_missing():
 
     costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
 
-    assert len(costs) == 1
-    assert costs[0].is_complete is False
-    assert costs[0].total_cost == Decimal("0")
-    # Only flour line cost included
-    assert len(costs[0].ingredient_costs) == 1
+    # Incomplete recipes are excluded entirely
+    assert len(costs) == 0
 
 
 def test_calculate_recipe_costs_incomplete_when_incompatible_units():
@@ -2408,10 +2385,8 @@ def test_calculate_recipe_costs_incomplete_when_incompatible_units():
 
     costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
 
-    assert len(costs) == 1
-    assert costs[0].is_complete is False
-    assert costs[0].total_cost == Decimal("0")
-    assert len(costs[0].ingredient_costs) == 0
+    # Incomplete recipes are excluded entirely
+    assert len(costs) == 0
 
 
 def test_calculate_recipe_costs_empty_recipe():
@@ -2434,7 +2409,6 @@ def test_calculate_recipe_costs_empty_recipe():
 
     assert len(costs) == 1
     assert costs[0].total_cost == Decimal("0")
-    assert costs[0].is_complete is True
     assert costs[0].ingredient_costs == ()
 
 
@@ -2470,7 +2444,7 @@ def test_calculate_meal_costs_scaling():
         line_cost=Decimal("5.00"),
     )
     recipe_costs = [
-        RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"), True),
+        RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00")),
     ]
 
     costs = calculate_meal_costs(meal_plans, recipes, recipe_costs)
@@ -2502,8 +2476,8 @@ def test_calculate_meal_costs_empty_slot():
     assert costs[0].recipe_cost is None
 
 
-def test_calculate_meal_costs_unavailable_when_recipe_cost_incomplete():
-    """MealCost unavailable when RecipeCost incomplete."""
+def test_calculate_meal_costs_unavailable_when_recipe_cost_missing():
+    """MealCost unavailable when RecipeCost missing (incomplete recipes excluded)."""
     from decimal import Decimal
     from dinner_spinner.domain.meal_plan import MealPlan
     from dinner_spinner.domain.recipe import Recipe
@@ -2516,16 +2490,14 @@ def test_calculate_meal_costs_unavailable_when_recipe_cost_incomplete():
         MealPlan(1, 20260101, 0, "Dinner", 1, 4),
     ]
     recipes = {1: Recipe(1, "Bread", 4)}
-    recipe_costs = [
-        RecipeCost(1, "Bread", 4, (), Decimal("0"), False),  # Incomplete
-    ]
+    # Incomplete recipes are excluded, so recipe_costs is empty
+    recipe_costs = []
 
     costs = calculate_meal_costs(meal_plans, recipes, recipe_costs)
 
     assert len(costs) == 1
     assert costs[0].meal_cost is None
-    assert costs[0].recipe_cost is not None
-    assert costs[0].recipe_cost.is_complete is False
+    assert costs[0].recipe_cost is None
 
 
 def test_calculate_weekly_cost_summary():
@@ -2548,7 +2520,7 @@ def test_calculate_weekly_cost_summary():
         calculated_quantity=Decimal("500"),
         line_cost=Decimal("5.00"),
     )
-    recipe_cost = RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"), True)
+    recipe_cost = RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"))
 
     meal_costs = [
         MealCost(1, 1, "Bread", 4, 4, recipe_cost, Decimal("5.00")),   # Costed
@@ -2645,7 +2617,7 @@ def test_calculate_meal_costs_deterministic():
         recipe_ingredient_unit="g", cost_per_unit=Decimal("0.01"), cost_unit="g",
         calculated_quantity=Decimal("500"), line_cost=Decimal("5.00"),
     )
-    recipe_costs = [RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"), True)]
+    recipe_costs = [RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"))]
 
     costs1 = calculate_meal_costs(meal_plans, recipes, recipe_costs)
     costs2 = calculate_meal_costs(meal_plans, recipes, recipe_costs)

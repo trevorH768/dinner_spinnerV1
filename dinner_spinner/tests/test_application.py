@@ -547,8 +547,8 @@ class TestCostingApplication:
         assert len(costs) == 1
         assert costs[0].ingredient_name == "Flour"
 
-    def test_get_ingredient_costs_skips_incompatible_units(self, db_session, unit_system_initialized):
-        """Acquisitions with incompatible units are skipped."""
+    def test_get_ingredient_costs_incompatible_acquisition_excludes_ingredient(self, db_session, unit_system_initialized):
+        """Ingredient cost unavailable when any acquisition has incompatible unit."""
         from dinner_spinner.application.costing import get_ingredient_costs
         from dinner_persistence.models import Ingredient, Acquisition
         from datetime import datetime
@@ -569,10 +569,8 @@ class TestCostingApplication:
 
         costs = get_ingredient_costs(db_session)
 
-        assert len(costs) == 1
-        assert costs[0].total_acquisition_quantity == 1000
-        assert costs[0].total_acquisition_cost == 10.00
-        assert costs[0].acquisition_count == 1
+        # Incompatible acquisition makes entire ingredient cost unavailable
+        assert len(costs) == 0
 
     def test_get_recipe_costs(self, db_session, unit_system_initialized):
         """get_recipe_costs calculates recipe costs correctly."""
@@ -610,7 +608,6 @@ class TestCostingApplication:
         assert len(costs) == 1
         cost = costs[0]
         assert cost.recipe_name == "Bread"
-        assert cost.is_complete is True
         # 500g * $0.01/g = $5 + 2 * $0.50 = $1 = $6 total
         assert cost.total_cost == 6.00
         assert len(cost.ingredient_costs) == 2
@@ -646,13 +643,8 @@ class TestCostingApplication:
 
         costs = get_recipe_costs(db_session)
 
-        assert len(costs) == 1
-        cost = costs[0]
-        assert cost.is_complete is False
-        assert cost.total_cost == 0
-        # Only flour line cost present
-        assert len(cost.ingredient_costs) == 1
-        assert cost.ingredient_costs[0].ingredient_name == "Flour"
+        # Incomplete recipes are excluded entirely
+        assert len(costs) == 0
 
     def test_get_meal_costs_for_week(self, db_session, unit_system_initialized):
         """get_meal_costs_for_week calculates meal costs for a week."""
