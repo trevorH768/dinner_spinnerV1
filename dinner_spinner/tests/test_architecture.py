@@ -1717,6 +1717,36 @@ def test_calculate_inventory_requirements_cross_category_rejected():
         calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("500"), "ml")})
 
 
+def test_calculate_inventory_requirements_zero_inventory_cross_category_allowed():
+    """Zero inventory with incompatible units is allowed (zero in any unit is zero)."""
+    from decimal import Decimal
+    from dinner_spinner.domain.inventory_requirement import calculate_inventory_requirements
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.demand import IngredientDemand
+    from dinner_spinner.domain.ingredient import Ingredient
+
+    reset()
+    initialize()
+
+    # Demand in grams, inventory in ml but quantity is zero
+    demands = [IngredientDemand(1, "Flour", Decimal("100"), "g")]
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("0"), "ml")}
+
+    # Should not raise - zero inventory in any unit is valid
+    reqs = calculate_inventory_requirements(demands, {1: Ingredient(1, "Flour", None, Decimal("0"), "ml")})
+
+    assert len(reqs) == 1
+    req = reqs[0]
+    assert req.ingredient_id == 1
+    assert req.ingredient_name == "Flour"
+    assert req.demand_quantity == Decimal("100")
+    assert req.demand_unit == "g"
+    assert req.available_quantity == Decimal("0")
+    assert req.available_unit == "ml"  # Original inventory unit preserved
+    assert req.net_requirement_quantity == Decimal("100")  # Full demand needed
+    assert req.net_requirement_unit == "g"  # Net requirement in demand's unit
+
+
 def test_calculate_inventory_requirements_preserves_original_data():
     """Calculation does not modify original demand or ingredient objects."""
     from decimal import Decimal

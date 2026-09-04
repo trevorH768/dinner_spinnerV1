@@ -95,10 +95,6 @@ def initialize() -> None:
     _IS_INITIALIZED = True
 
 
-def is_initialized() -> bool:
-    return _IS_INITIALIZED
-
-
 def validate_unit(unit: str) -> bool:
     """Return True if *unit* is a recognized canonical unit."""
     if not _IS_INITIALIZED:
