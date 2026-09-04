@@ -996,6 +996,15 @@ def test_domain_exports_exact_entities():
         "Consumption",
         "Waste",
         "UnitSystem",
+        "IngredientDemand",
+        "calculate_demand",
+        "calculate_demand_for_week",
+        "IngredientRequirement",
+        "calculate_inventory_requirements",
+        "IngredientRequirement",
+        "ShoppingListItem",
+        "calculate_shopping_list",
+        "UnitSystem",
     }
 
     # Check all expected are present
@@ -1006,7 +1015,7 @@ def test_domain_exports_exact_entities():
     forbidden = {
         "Container", "InventoryLot", "Product", "Package", "Store",
         "Brand", "Barcode", "Nutrition", "InventoryEvent", "Transfer",
-        "PriceEstimate", "ShoppingList", "ShoppingListItem",
+        "PriceEstimate", "ShoppingList",
         "Demand", "AvailableInventory", "NetRequirement",
         "CostPerUnit", "RecipeCost", "MealCost",
     }

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Shopping List - Dinner Spinner{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Shopping List</h2>
+        <div>
+            <form method="GET" action="{{ url_for('main.shopping_list_week') }}" style="display: inline;">
+                <label for="week_start">Week: </label>
+                <input type="date" id="week_start" name="week_start" value="{{ week_start | dateformat }}">
+                <button type="submit">View</button>
+            </form>
+        </div>
+    </div>
+
+    {% if shopping_list %}
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ingredient</th>
+                    <th>Quantity</th>
+                    <th>Unit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in shopping_list %}
+                <tr>
+                    <td>{{ item.ingredient_name }}</td>
+                    <td>{{ "%.3f"|format(item.quantity) }}</td>
+                    <td>{{ item.unit }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card">
+        <p style="text-align: center; color: #666; padding: 40px;">
+            No items needed for this week's shopping list!<br>
+            <a href="{{ url_for('main.meal_plan') }}">Plan some meals</a> to generate a shopping list.
+        </p>
+    </div>
+    {% endif %}
+{% endblock %}

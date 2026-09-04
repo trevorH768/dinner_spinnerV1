@@ -675,3 +675,33 @@ def requirements_week(week_start):
     requirements = get_inventory_requirements_for_week(db.session, week_start)
 
     return render_template("requirements_index.html", requirements=requirements, week_start=week_start)
+
+
+# =============================================================================
+# Slice 5: Shopping List Routes
+# =============================================================================
+
+@bp.route("/shopping-list")
+def shopping_list_index():
+    """Shopping list overview - shows shopping list for the current week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.shopping_list import get_shopping_list_for_week
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    week_start = int((today - timedelta(days=today.weekday())).strftime("%Y%m%d"))
+
+    shopping_list = get_shopping_list_for_week(db.session, week_start)
+
+    return render_template("shopping_list.html", shopping_list=shopping_list, week_start=week_start)
+
+
+@bp.route("/shopping-list/<int:week_start>")
+def shopping_list_week(week_start):
+    """Shopping list view for a specific week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.shopping_list import get_shopping_list_for_week
+
+    shopping_list = get_shopping_list_for_week(db.session, week_start)
+
+    return render_template("shopping_list.html", shopping_list=shopping_list, week_start=week_start)

@@ -30,6 +30,12 @@ from dinner_spinner.application.inventory_requirements import (
     MissingIngredientError,
     IncompatibleUnitsError as IRIncompatibleUnitsError,
 )
+from dinner_spinner.application.shopping_list import (
+    calculate_weekly_shopping_list,
+    get_shopping_list_for_week,
+    ShoppingListError,
+    UnitSystemNotInitializedError as SLUnitSystemNotInitializedError,
+)
 
 __all__ = [
     "record_acquisition",
@@ -56,4 +62,8 @@ __all__ = [
     "IRUnitSystemNotInitializedError",
     "MissingIngredientError",
     "IRIncompatibleUnitsError",
+    "calculate_weekly_shopping_list",
+    "get_shopping_list_for_week",
+    "ShoppingListError",
+    "SLUnitSystemNotInitializedError",
 ]
