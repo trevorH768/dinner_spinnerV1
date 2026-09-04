@@ -1,9 +1,9 @@
 """Shopping List: A calculated projection of the Net Requirements for the
-selected calendar month, presented as a user-facing list of Ingredients
+selected calendar week, presented as a user-facing list of Ingredients
 and quantities that need to be acquired.
 
 The shopping list is a projection.
-The user generates the shopping list for the calendar month corresponding
+The user generates the shopping list for the calendar week corresponding
 to when the action is performed.
 If the Meal Plan or inventory changes, the calculated Shopping List changes accordingly.
 There are no stale stored shopping lists.
@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from dinner_spinner.domain.inventory_requirement import IngredientRequirement
-from dinner_spinner.domain.unit_system import is_initialized
 
 
 @dataclass(frozen=True)
@@ -66,9 +65,6 @@ def calculate_shopping_list(requirements: list) -> list:
         List of ShoppingListItem objects, sorted by ingredient_name then ingredient_id
         for deterministic ordering.
     """
-    if not is_initialized():
-        raise RuntimeError("UnitSystem not initialized; call initialize() first")
-
     items = []
     for req in requirements:
         if req.net_requirement_quantity > 0:
@@ -103,34 +99,34 @@ if __name__ == "__main__":
     requirements = [
         IngredientRequirement(
             ingredient_id=1, ingredient_name="Flour",
-            demand_quantity=2000, demand_unit="g",
-            available_quantity=1000, available_unit="g",
-            net_requirement_quantity=800, net_requirement_unit="g"
+            demand_quantity=Decimal("2000"), demand_unit="g",
+            available_quantity=Decimal("1000"), available_unit="g",
+            net_requirement_quantity=Decimal("800"), net_requirement_unit="g"
         ),
         IngredientRequirement(
             ingredient_id=2, ingredient_name="Milk",
-            demand_quantity=250, demand_unit="ml",
-            available_quantity=2000, available_unit="ml",
-            net_requirement_quantity=0, net_requirement_unit="ml"
+            demand_quantity=Decimal("250"), demand_unit="ml",
+            available_quantity=Decimal("2000"), available_unit="ml",
+            net_requirement_quantity=Decimal("0"), net_requirement_unit="ml"
         ),
         IngredientRequirement(
             ingredient_id=3, ingredient_name="Eggs",
-            demand_quantity=2, demand_unit="each",
-            available_quantity=12, available_unit="each",
-            net_requirement_quantity=0, net_requirement_unit="each"
+            demand_quantity=Decimal("2"), demand_unit="each",
+            available_quantity=Decimal("12"), available_unit="each",
+            net_requirement_quantity=Decimal("0"), net_requirement_unit="each"
         ),
         IngredientRequirement(
             ingredient_id=4, ingredient_name="Flour",
-            demand_quantity=500, demand_unit="g",
-            available_quantity=0, available_unit="g",
-            net_requirement_quantity=500, net_requirement_unit="g"
+            demand_quantity=Decimal("500"), demand_unit="g",
+            available_quantity=Decimal("0"), available_unit="g",
+            net_requirement_quantity=Decimal("500"), net_requirement_unit="g"
         ),
     ]
     shopping_list = calculate_shopping_list(requirements)
     for item in shopping_list:
         print(f"  {item.ingredient_name}: {item.quantity} {item.unit}")
     # Should have Flour (800g) only
-    assert len(shoppng_list) == 1
+    assert len(shopping_list) == 1
     assert shopping_list[0].ingredient_name == "Flour"
     assert shopping_list[0].quantity == 800
     assert shopping_list[0].unit == "g"
@@ -140,9 +136,9 @@ if __name__ == "__main__":
     requirements = [
         IngredientRequirement(
             ingredient_id=1, ingredient_name="Flour",
-            demand_quantity=1000, demand_unit="g",
-            available_quantity=1000, available_unit="g",
-            net_requirement_quantity=0, net_requirement_unit="g"
+            demand_quantity=Decimal("1000"), demand_unit="g",
+            available_quantity=Decimal("1000"), available_unit="g",
+            net_requirement_quantity=Decimal("0"), net_requirement_unit="g"
         ),
     ]
     shopping_list = calculate_shopping_list(requirements)
