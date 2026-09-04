@@ -705,3 +705,67 @@ def shopping_list_week(week_start):
     shopping_list = get_shopping_list_for_week(db.session, week_start)
 
     return render_template("shopping_list.html", shopping_list=shopping_list, week_start=week_start)
+
+
+# =============================================================================
+# Slice 6: Costing Routes
+# =============================================================================
+
+@bp.route("/costs/ingredients")
+def ingredient_costs():
+    """Ingredient cost per unit view."""
+    from dinner_persistence import db
+    from dinner_spinner.application.costing import get_ingredient_costs
+
+    ingredient_costs = get_ingredient_costs(db.session)
+
+    return render_template("ingredient_costs.html", ingredient_costs=ingredient_costs)
+
+
+@bp.route("/costs/recipes")
+def recipe_costs():
+    """Recipe cost view."""
+    from dinner_persistence import db
+    from dinner_spinner.application.costing import get_recipe_costs
+
+    recipe_costs = get_recipe_costs(db.session)
+
+    return render_template("recipe_costs.html", recipe_costs=recipe_costs)
+
+
+@bp.route("/costs/meal-plan")
+def meal_plan_costs_index():
+    """Meal plan cost view for the current week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.costing import get_meal_costs_for_week, get_weekly_cost_summary
+    from datetime import datetime, timedelta
+
+    today = datetime.now().date()
+    week_start = int((today - timedelta(days=today.weekday())).strftime("%Y%m%d"))
+
+    meal_costs = get_meal_costs_for_week(db.session, week_start)
+    summary = get_weekly_cost_summary(db.session, week_start)
+
+    return render_template(
+        "meal_plan_costs.html",
+        meal_costs=meal_costs,
+        summary=summary,
+        week_start=week_start,
+    )
+
+
+@bp.route("/costs/meal-plan/<int:week_start>")
+def meal_plan_costs_week(week_start):
+    """Meal plan cost view for a specific week."""
+    from dinner_persistence import db
+    from dinner_spinner.application.costing import get_meal_costs_for_week, get_weekly_cost_summary
+
+    meal_costs = get_meal_costs_for_week(db.session, week_start)
+    summary = get_weekly_cost_summary(db.session, week_start)
+
+    return render_template(
+        "meal_plan_costs.html",
+        meal_costs=meal_costs,
+        summary=summary,
+        week_start=week_start,
+    )

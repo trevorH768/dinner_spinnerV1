@@ -1017,7 +1017,7 @@ def test_domain_exports_exact_entities():
         "Brand", "Barcode", "Nutrition", "InventoryEvent", "Transfer",
         "PriceEstimate", "ShoppingList",
         "Demand", "AvailableInventory", "NetRequirement",
-        "CostPerUnit", "RecipeCost", "MealCost",
+        "CostPerUnit",
     }
     for f in forbidden:
         assert f not in domain_exports, f"Forbidden entity exported: {f}"
@@ -1879,6 +1879,830 @@ def test_no_available_inventory_persistence_model():
     assert "available_inventory" not in tables
     assert "net_requirement" not in tables
     assert "inventory_requirement" not in tables
+
+
+# ---------------------------------------------------------------------------
+# 12. Slice 6: Costing Tests
+# ---------------------------------------------------------------------------
+
+def test_costing_domain_exports():
+    """Costing entities are exported from domain layer."""
+    from dinner_spinner.domain import __all__ as domain_exports
+
+    expected = {
+        "IngredientCost",
+        "RecipeIngredientCost",
+        "RecipeCost",
+        "MealCost",
+        "calculate_ingredient_costs",
+        "calculate_recipe_costs",
+        "calculate_meal_costs",
+        "calculate_weekly_cost_summary",
+    }
+    for e in expected:
+        assert e in domain_exports, f"Missing export: {e}"
+
+
+def test_ingredient_cost_creation():
+    """IngredientCost can be created with valid data."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import IngredientCost
+
+    cost = IngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        cost_per_unit=Decimal("1.50"),
+        cost_unit="kg",
+        total_acquisition_cost=Decimal("15.00"),
+        total_acquisition_quantity=Decimal("10"),
+        acquisition_count=2,
+    )
+    assert cost.ingredient_id == 1
+    assert cost.ingredient_name == "Flour"
+    assert cost.cost_per_unit == Decimal("1.50")
+    assert cost.cost_unit == "kg"
+    assert cost.total_acquisition_cost == Decimal("15.00")
+    assert cost.total_acquisition_quantity == Decimal("10")
+    assert cost.acquisition_count == 2
+
+
+def test_ingredient_cost_rejects_negative_cost_per_unit():
+    """IngredientCost rejects negative cost per unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import IngredientCost
+
+    with pytest.raises(ValueError, match="negative"):
+        IngredientCost(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            cost_per_unit=Decimal("-1.00"),
+            cost_unit="kg",
+            total_acquisition_cost=Decimal("10.00"),
+            total_acquisition_quantity=Decimal("10"),
+            acquisition_count=1,
+        )
+
+
+def test_ingredient_cost_rejects_zero_total_quantity():
+    """IngredientCost rejects zero total quantity."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import IngredientCost
+
+    with pytest.raises(ValueError, match="positive"):
+        IngredientCost(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            cost_per_unit=Decimal("1.00"),
+            cost_unit="kg",
+            total_acquisition_cost=Decimal("10.00"),
+            total_acquisition_quantity=Decimal("0"),
+            acquisition_count=1,
+        )
+
+
+def test_ingredient_cost_rejects_zero_acquisition_count():
+    """IngredientCost rejects zero acquisition count."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import IngredientCost
+
+    with pytest.raises(ValueError, match="positive"):
+        IngredientCost(
+            ingredient_id=1,
+            ingredient_name="Flour",
+            cost_per_unit=Decimal("1.00"),
+            cost_unit="kg",
+            total_acquisition_cost=Decimal("10.00"),
+            total_acquisition_quantity=Decimal("10"),
+            acquisition_count=0,
+        )
+
+
+def test_recipe_ingredient_cost_creation():
+    """RecipeIngredientCost can be created with valid data."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import RecipeIngredientCost
+
+    cost = RecipeIngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g",
+        cost_per_unit=Decimal("1.00"),
+        cost_unit="kg",
+        calculated_quantity=Decimal("0.5"),
+        line_cost=Decimal("0.50"),
+    )
+    assert cost.ingredient_id == 1
+    assert cost.line_cost == Decimal("0.50")
+
+
+def test_recipe_cost_creation():
+    """RecipeCost can be created with valid data."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import RecipeCost, RecipeIngredientCost
+
+    line_cost = RecipeIngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g",
+        cost_per_unit=Decimal("1.00"),
+        cost_unit="kg",
+        calculated_quantity=Decimal("0.5"),
+        line_cost=Decimal("0.50"),
+    )
+    cost = RecipeCost(
+        recipe_id=1,
+        recipe_name="Bread",
+        base_servings=4,
+        ingredient_costs=(line_cost,),
+        total_cost=Decimal("0.50"),
+        is_complete=True,
+    )
+    assert cost.recipe_id == 1
+    assert cost.total_cost == Decimal("0.50")
+    assert cost.is_complete is True
+
+
+def test_recipe_cost_incomplete_must_have_zero_total():
+    """Incomplete RecipeCost must have zero total cost."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import RecipeCost
+
+    with pytest.raises(ValueError, match="zero total cost"):
+        RecipeCost(
+            recipe_id=1,
+            recipe_name="Bread",
+            base_servings=4,
+            ingredient_costs=(),
+            total_cost=Decimal("1.00"),
+            is_complete=False,
+        )
+
+
+def test_meal_cost_creation():
+    """MealCost can be created with valid data."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import MealCost, RecipeCost, RecipeIngredientCost
+
+    line_cost = RecipeIngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g",
+        cost_per_unit=Decimal("1.00"),
+        cost_unit="kg",
+        calculated_quantity=Decimal("0.5"),
+        line_cost=Decimal("0.50"),
+    )
+    recipe_cost = RecipeCost(
+        recipe_id=1,
+        recipe_name="Bread",
+        base_servings=4,
+        ingredient_costs=(line_cost,),
+        total_cost=Decimal("0.50"),
+        is_complete=True,
+    )
+    meal_cost = MealCost(
+        meal_plan_id=1,
+        recipe_id=1,
+        recipe_name="Bread",
+        planned_servings=8,
+        base_servings=4,
+        recipe_cost=recipe_cost,
+        meal_cost=Decimal("1.00"),
+    )
+    assert meal_cost.meal_plan_id == 1
+    assert meal_cost.meal_cost == Decimal("1.00")
+
+
+def test_meal_cost_unavailable_when_recipe_cost_unavailable():
+    """MealCost without recipe_cost must have None meal_cost."""
+    from dinner_spinner.domain.costing import MealCost
+
+    meal_cost = MealCost(
+        meal_plan_id=1,
+        recipe_id=1,
+        recipe_name="Bread",
+        planned_servings=8,
+        base_servings=4,
+        recipe_cost=None,
+        meal_cost=None,
+    )
+    assert meal_cost.meal_cost is None
+    assert meal_cost.recipe_cost is None
+
+
+def test_meal_cost_rejects_mismatched_recipe_and_meal_cost():
+    """MealCost rejects recipe_cost present but meal_cost None."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import MealCost, RecipeCost, RecipeIngredientCost
+
+    line_cost = RecipeIngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g",
+        cost_per_unit=Decimal("1.00"),
+        cost_unit="kg",
+        calculated_quantity=Decimal("0.5"),
+        line_cost=Decimal("0.50"),
+    )
+    recipe_cost = RecipeCost(
+        recipe_id=1,
+        recipe_name="Bread",
+        base_servings=4,
+        ingredient_costs=(line_cost,),
+        total_cost=Decimal("0.50"),
+        is_complete=True,
+    )
+
+    with pytest.raises(ValueError, match="meal cost not calculated"):
+        MealCost(
+            meal_plan_id=1,
+            recipe_id=1,
+            recipe_name="Bread",
+            planned_servings=8,
+            base_servings=4,
+            recipe_cost=recipe_cost,
+            meal_cost=None,
+        )
+
+
+def test_calculate_ingredient_costs_single_acquisition():
+    """Single acquisition produces correct cost per unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+    from dinner_spinner.domain.acquisition import Acquisition
+    from datetime import datetime
+    from dinner_spinner.domain.costing import calculate_ingredient_costs
+
+    reset()
+    initialize()
+
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("1000"), "g"),
+    }
+    acquisitions = [
+        Acquisition(1, 1, 1000, "g", Decimal("10.00"), datetime(2024, 1, 1)),
+    ]
+
+    costs = calculate_ingredient_costs(ingredients, acquisitions)
+
+    assert len(costs) == 1
+    assert costs[0].ingredient_id == 1
+    assert costs[0].cost_per_unit == Decimal("0.01")  # $10 / 1000g = $0.01/g
+    assert costs[0].cost_unit == "g"
+    assert costs[0].total_acquisition_cost == Decimal("10.00")
+    assert costs[0].total_acquisition_quantity == Decimal("1000")
+    assert costs[0].acquisition_count == 1
+
+
+def test_calculate_ingredient_costs_multiple_acquisitions_weighted_average():
+    """Multiple acquisitions produce weighted average cost."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+    from dinner_spinner.domain.acquisition import Acquisition
+    from datetime import datetime
+    from dinner_spinner.domain.costing import calculate_ingredient_costs
+
+    reset()
+    initialize()
+
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("1000"), "g"),
+    }
+    acquisitions = [
+        Acquisition(1, 1, 500, "g", Decimal("5.00"), datetime(2024, 1, 1)),
+        Acquisition(2, 1, 1000, "g", Decimal("12.00"), datetime(2024, 1, 15)),
+    ]
+
+    costs = calculate_ingredient_costs(ingredients, acquisitions)
+
+    assert len(costs) == 1
+    # Total cost = $17, total qty = 1500g, cost/g = $17/1500 = $0.01133...
+    assert costs[0].total_acquisition_cost == Decimal("17.00")
+    assert costs[0].total_acquisition_quantity == Decimal("1500")
+    assert costs[0].acquisition_count == 2
+    expected = Decimal("17.00") / Decimal("1500")
+    assert costs[0].cost_per_unit == expected
+
+
+def test_calculate_ingredient_costs_acquisition_unit_conversion():
+    """Acquisitions in different units are converted to ingredient unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+    from dinner_spinner.domain.acquisition import Acquisition
+    from datetime import datetime
+    from dinner_spinner.domain.costing import calculate_ingredient_costs
+
+    reset()
+    initialize()
+
+    # Ingredient in kg
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("2"), "kg"),
+    }
+    # Acquisitions in g
+    acquisitions = [
+        Acquisition(1, 1, 500, "g", Decimal("5.00"), datetime(2024, 1, 1)),
+        Acquisition(2, 1, 1000, "g", Decimal("10.00"), datetime(2024, 1, 15)),
+    ]
+
+    costs = calculate_ingredient_costs(ingredients, acquisitions)
+
+    assert len(costs) == 1
+    # 500g + 1000g = 1500g = 1.5kg, total cost $15, cost/kg = $10/kg
+    assert costs[0].cost_unit == "kg"
+    assert costs[0].total_acquisition_quantity == Decimal("1.5")
+    assert costs[0].cost_per_unit == Decimal("10.00")
+
+
+def test_calculate_ingredient_costs_skips_incompatible_acquisition_units():
+    """Incompatible acquisition units are skipped."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+    from dinner_spinner.domain.acquisition import Acquisition
+    from datetime import datetime
+    from dinner_spinner.domain.costing import calculate_ingredient_costs
+
+    reset()
+    initialize()
+
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("1000"), "g"),
+    }
+    # One valid (g), one incompatible (ml)
+    acquisitions = [
+        Acquisition(1, 1, 1000, "g", Decimal("10.00"), datetime(2024, 1, 1)),
+        Acquisition(2, 1, 500, "ml", Decimal("5.00"), datetime(2024, 1, 15)),
+    ]
+
+    costs = calculate_ingredient_costs(ingredients, acquisitions)
+
+    assert len(costs) == 1
+    # Only the g acquisition counted
+    assert costs[0].total_acquisition_quantity == Decimal("1000")
+    assert costs[0].total_acquisition_cost == Decimal("10.00")
+    assert costs[0].acquisition_count == 1
+
+
+def test_calculate_ingredient_costs_no_acquisitions_excluded():
+    """Ingredients with no acquisitions are excluded from results."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+    from dinner_spinner.domain.acquisition import Acquisition
+    from datetime import datetime
+    from dinner_spinner.domain.costing import calculate_ingredient_costs
+
+    reset()
+    initialize()
+
+    ingredients = {
+        1: Ingredient(1, "Flour", None, Decimal("1000"), "g"),
+        2: Ingredient(2, "Sugar", None, Decimal("500"), "g"),
+    }
+    acquisitions = [
+        Acquisition(1, 1, 1000, "g", Decimal("10.00"), datetime(2024, 1, 1)),
+    ]
+
+    costs = calculate_ingredient_costs(ingredients, acquisitions)
+
+    assert len(costs) == 1
+    assert costs[0].ingredient_id == 1
+
+
+def test_calculate_recipe_costs_basic():
+    """Recipe cost calculated from ingredient costs."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+    from dinner_spinner.domain.costing import (
+        calculate_ingredient_costs,
+        calculate_recipe_costs,
+        IngredientCost,
+    )
+
+    reset()
+    initialize()
+
+    recipes = {
+        1: Recipe(1, "Bread", 4),
+    }
+    recipe_ingredients = {
+        1: [RecipeIngredient(1, 1, 1, 500, "g")],
+    }
+    ingredient_costs = [
+        IngredientCost(1, "Flour", Decimal("0.01"), "g", Decimal("10.00"), Decimal("1000"), 1),
+    ]
+
+    costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+
+    assert len(costs) == 1
+    assert costs[0].recipe_id == 1
+    assert costs[0].total_cost == Decimal("5.00")  # 500g * $0.01/g = $5
+    assert costs[0].is_complete is True
+    assert len(costs[0].ingredient_costs) == 1
+
+
+def test_calculate_recipe_costs_recipe_ingredient_unit_conversion():
+    """RecipeIngredient unit converted to ingredient cost unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+    from dinner_spinner.domain.costing import (
+        calculate_recipe_costs,
+        IngredientCost,
+    )
+
+    reset()
+    initialize()
+
+    recipes = {
+        1: Recipe(1, "Bread", 4),
+    }
+    # RecipeIngredient in kg, ingredient cost in g
+    recipe_ingredients = {
+        1: [RecipeIngredient(1, 1, 1, 1, "kg")],
+    }
+    ingredient_costs = [
+        IngredientCost(1, "Flour", Decimal("10.00"), "kg", Decimal("10.00"), Decimal("1"), 1),
+    ]
+
+    costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+
+    assert len(costs) == 1
+    # 1kg * $10/kg = $10
+    assert costs[0].total_cost == Decimal("10.00")
+    assert costs[0].ingredient_costs[0].calculated_quantity == Decimal("1")
+
+
+def test_calculate_recipe_costs_incomplete_when_ingredient_missing():
+    """RecipeCost is incomplete when ingredient cost unavailable."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+    from dinner_spinner.domain.costing import (
+        calculate_recipe_costs,
+        IngredientCost,
+    )
+
+    reset()
+    initialize()
+
+    recipes = {
+        1: Recipe(1, "Bread", 4),
+    }
+    recipe_ingredients = {
+        1: [
+            RecipeIngredient(1, 1, 1, 500, "g"),  # Flour
+            RecipeIngredient(2, 1, 2, 2, "each"),  # Eggs - no cost
+        ],
+    }
+    ingredient_costs = [
+        IngredientCost(1, "Flour", Decimal("0.01"), "g", Decimal("10.00"), Decimal("1000"), 1),
+        # No cost for ingredient 2 (Eggs)
+    ]
+
+    costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+
+    assert len(costs) == 1
+    assert costs[0].is_complete is False
+    assert costs[0].total_cost == Decimal("0")
+    # Only flour line cost included
+    assert len(costs[0].ingredient_costs) == 1
+
+
+def test_calculate_recipe_costs_incomplete_when_incompatible_units():
+    """RecipeCost incomplete when RecipeIngredient unit incompatible with cost unit."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+    from dinner_spinner.domain.costing import (
+        calculate_recipe_costs,
+        IngredientCost,
+    )
+
+    reset()
+    initialize()
+
+    recipes = {
+        1: Recipe(1, "Bread", 4),
+    }
+    # RecipeIngredient in g, but cost unit is each (incompatible)
+    recipe_ingredients = {
+        1: [RecipeIngredient(1, 1, 1, 500, "g")],
+    }
+    ingredient_costs = [
+        IngredientCost(1, "Flour", Decimal("1.00"), "each", Decimal("10.00"), Decimal("10"), 1),
+    ]
+
+    costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+
+    assert len(costs) == 1
+    assert costs[0].is_complete is False
+    assert costs[0].total_cost == Decimal("0")
+    assert len(costs[0].ingredient_costs) == 0
+
+
+def test_calculate_recipe_costs_empty_recipe():
+    """Recipe with no ingredients has zero cost."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.costing import calculate_recipe_costs
+
+    reset()
+    initialize()
+
+    recipes = {
+        1: Recipe(1, "Empty", 4),
+    }
+    recipe_ingredients = {1: []}
+    ingredient_costs = []
+
+    costs = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+
+    assert len(costs) == 1
+    assert costs[0].total_cost == Decimal("0")
+    assert costs[0].is_complete is True
+    assert costs[0].ingredient_costs == ()
+
+
+def test_calculate_meal_costs_scaling():
+    """MealCost scales RecipeCost by serving ratio."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.costing import (
+        RecipeCost,
+        RecipeIngredientCost,
+        calculate_meal_costs,
+    )
+
+    reset()
+    initialize()
+
+    meal_plans = [
+        MealPlan(1, 20260101, 0, "Dinner", 1, 8),  # 8 servings
+    ]
+    recipes = {
+        1: Recipe(1, "Bread", 4),  # Base 4 servings
+    }
+    line_cost = RecipeIngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g",
+        cost_per_unit=Decimal("0.01"),
+        cost_unit="g",
+        calculated_quantity=Decimal("500"),
+        line_cost=Decimal("5.00"),
+    )
+    recipe_costs = [
+        RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"), True),
+    ]
+
+    costs = calculate_meal_costs(meal_plans, recipes, recipe_costs)
+
+    assert len(costs) == 1
+    # 8 servings / 4 base = 2x, $5 * 2 = $10
+    assert costs[0].meal_cost == Decimal("10.00")
+    assert costs[0].planned_servings == 8
+    assert costs[0].base_servings == 4
+
+
+def test_calculate_meal_costs_empty_slot():
+    """Empty meal slot has no cost."""
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.costing import calculate_meal_costs
+
+    meal_plans = [
+        MealPlan(1, 20260101, 0, "Dinner", None, 4),  # No recipe
+    ]
+    recipes = {}
+    recipe_costs = []
+
+    costs = calculate_meal_costs(meal_plans, recipes, recipe_costs)
+
+    assert len(costs) == 1
+    assert costs[0].recipe_id is None
+    assert costs[0].recipe_name == ""
+    assert costs[0].meal_cost is None
+    assert costs[0].recipe_cost is None
+
+
+def test_calculate_meal_costs_unavailable_when_recipe_cost_incomplete():
+    """MealCost unavailable when RecipeCost incomplete."""
+    from decimal import Decimal
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.costing import (
+        RecipeCost,
+        calculate_meal_costs,
+    )
+
+    meal_plans = [
+        MealPlan(1, 20260101, 0, "Dinner", 1, 4),
+    ]
+    recipes = {1: Recipe(1, "Bread", 4)}
+    recipe_costs = [
+        RecipeCost(1, "Bread", 4, (), Decimal("0"), False),  # Incomplete
+    ]
+
+    costs = calculate_meal_costs(meal_plans, recipes, recipe_costs)
+
+    assert len(costs) == 1
+    assert costs[0].meal_cost is None
+    assert costs[0].recipe_cost is not None
+    assert costs[0].recipe_cost.is_complete is False
+
+
+def test_calculate_weekly_cost_summary():
+    """Weekly cost summary aggregates correctly."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import (
+        MealCost,
+        RecipeCost,
+        RecipeIngredientCost,
+        calculate_weekly_cost_summary,
+    )
+
+    line_cost = RecipeIngredientCost(
+        ingredient_id=1,
+        ingredient_name="Flour",
+        recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g",
+        cost_per_unit=Decimal("0.01"),
+        cost_unit="g",
+        calculated_quantity=Decimal("500"),
+        line_cost=Decimal("5.00"),
+    )
+    recipe_cost = RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"), True)
+
+    meal_costs = [
+        MealCost(1, 1, "Bread", 4, 4, recipe_cost, Decimal("5.00")),   # Costed
+        MealCost(2, 1, "Bread", 8, 4, recipe_cost, Decimal("10.00")),  # Costed
+        MealCost(3, 1, "Bread", 4, 4, None, None),                      # Uncosted
+        MealCost(4, None, "", 4, 0, None, None),                        # Empty
+    ]
+
+    summary = calculate_weekly_cost_summary(meal_costs)
+
+    assert summary["total_cost"] == Decimal("15.00")
+    assert summary["costed_meals"] == 2
+    assert summary["uncosted_meals"] == 1
+    assert summary["empty_slots"] == 1
+
+
+def test_calculate_weekly_cost_summary_empty():
+    """Empty week produces zero summary."""
+    from decimal import Decimal
+    from dinner_spinner.domain.costing import calculate_weekly_cost_summary
+
+    summary = calculate_weekly_cost_summary([])
+
+    assert summary["total_cost"] == Decimal("0")
+    assert summary["costed_meals"] == 0
+    assert summary["uncosted_meals"] == 0
+    assert summary["empty_slots"] == 0
+
+
+def test_calculate_ingredient_costs_deterministic():
+    """Same inputs always produce same outputs."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.ingredient import Ingredient
+    from dinner_spinner.domain.acquisition import Acquisition
+    from datetime import datetime
+    from dinner_spinner.domain.costing import calculate_ingredient_costs
+
+    reset()
+    initialize()
+
+    ingredients = {1: Ingredient(1, "Flour", None, Decimal("1000"), "g")}
+    acquisitions = [Acquisition(1, 1, 1000, "g", Decimal("10.00"), datetime(2024, 1, 1))]
+
+    costs1 = calculate_ingredient_costs(ingredients, acquisitions)
+    costs2 = calculate_ingredient_costs(ingredients, acquisitions)
+
+    assert costs1 == costs2
+
+
+def test_calculate_recipe_costs_deterministic():
+    """Same inputs always produce same recipe costs."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.recipe_ingredient import RecipeIngredient
+    from dinner_spinner.domain.costing import (
+        calculate_recipe_costs,
+        IngredientCost,
+    )
+
+    reset()
+    initialize()
+
+    recipes = {1: Recipe(1, "Bread", 4)}
+    recipe_ingredients = {1: [RecipeIngredient(1, 1, 1, 500, "g")]}
+    ingredient_costs = [IngredientCost(1, "Flour", Decimal("0.01"), "g", Decimal("10.00"), Decimal("1000"), 1)]
+
+    costs1 = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+    costs2 = calculate_recipe_costs(recipes, recipe_ingredients, ingredient_costs)
+
+    assert costs1 == costs2
+
+
+def test_calculate_meal_costs_deterministic():
+    """Same inputs always produce same meal costs."""
+    from decimal import Decimal
+    from dinner_spinner.domain.unit_system import initialize, reset
+    from dinner_spinner.domain.meal_plan import MealPlan
+    from dinner_spinner.domain.recipe import Recipe
+    from dinner_spinner.domain.costing import (
+        RecipeCost,
+        RecipeIngredientCost,
+        calculate_meal_costs,
+    )
+
+    reset()
+    initialize()
+
+    meal_plans = [MealPlan(1, 20260101, 0, "Dinner", 1, 8)]
+    recipes = {1: Recipe(1, "Bread", 4)}
+    line_cost = RecipeIngredientCost(
+        ingredient_id=1, ingredient_name="Flour", recipe_ingredient_quantity=Decimal("500"),
+        recipe_ingredient_unit="g", cost_per_unit=Decimal("0.01"), cost_unit="g",
+        calculated_quantity=Decimal("500"), line_cost=Decimal("5.00"),
+    )
+    recipe_costs = [RecipeCost(1, "Bread", 4, (line_cost,), Decimal("5.00"), True)]
+
+    costs1 = calculate_meal_costs(meal_plans, recipes, recipe_costs)
+    costs2 = calculate_meal_costs(meal_plans, recipes, recipe_costs)
+
+    assert costs1 == costs2
+
+
+# ---------------------------------------------------------------------------
+# 13. Slice 6 Architecture Tests
+# ---------------------------------------------------------------------------
+
+def test_costing_domain_does_not_import_flask():
+    """Costing domain must not import Flask."""
+    import dinner_spinner.domain.costing as costing_mod
+    assert "Flask" not in costing_mod.__dict__
+
+
+def test_costing_domain_does_not_import_sqlalchemy():
+    """Costing domain must not import SQLAlchemy."""
+    import dinner_spinner.domain.costing as costing_mod
+    for attr in dir(costing_mod):
+        attr_lower = attr.lower()
+        if "sqlalchemy" in attr_lower and not attr.startswith("__"):
+            pytest.fail(f"costing.{attr} appears to import sqlalchemy")
+
+
+def test_costing_domain_does_not_import_database_session():
+    """Costing domain must not import database session mechanics."""
+    import dinner_spinner.domain.costing as costing_mod
+    forbidden = ["sqlalchemy", "session", "engine", "connection"]
+    for attr in dir(costing_mod):
+        attr_lower = attr.lower()
+        for f in forbidden:
+            if f in attr_lower and not attr.startswith("__"):
+                pytest.fail(f"costing.{attr} appears to import {f}")
+
+
+def test_costing_no_persistent_entities():
+    """Costing must not introduce persistent entities."""
+    from dinner_persistence.models import Base
+    tables = Base.metadata.tables.keys()
+    costing_tables = [
+        "ingredient_cost", "recipe_cost", "meal_cost",
+        "recipe_ingredient_cost", "cost", "costing",
+    ]
+    for t in costing_tables:
+        assert t not in tables, f"Found forbidden costing table: {t}"
+
+
+def test_costing_no_migration_created():
+    """No migration should be created for Slice 6."""
+    import os
+    migration_dir = "migrations/versions"
+    if os.path.exists(migration_dir):
+        # Should only have the two existing migrations
+        migrations = [f for f in os.listdir(migration_dir) if f.endswith(".py")]
+        assert len(migrations) == 2, f"Unexpected migration count: {migrations}"
 
 
 if __name__ == "__main__":

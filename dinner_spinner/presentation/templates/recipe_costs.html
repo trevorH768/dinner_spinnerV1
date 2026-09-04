@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1>Recipe Costs</h1>
+    <p class="text-muted">Total cost at base servings from historical ingredient costs</p>
+
+    {% if recipe_costs %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Recipe</th>
+                    <th>Base Servings</th>
+                    <th>Total Cost</th>
+                    <th>Status</th>
+                    <th>Ingredients</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cost in recipe_costs %}
+                <tr class="{{ 'table-warning' if not cost.is_complete else '' }}">
+                    <td>
+                        <a href="{{ url_for('main.recipe_detail', id=cost.recipe_id) }}">
+                            {{ cost.recipe_name }}
+                        </a>
+                    </td>
+                    <td>{{ cost.base_servings }}</td>
+                    <td>
+                        {% if cost.is_complete %}
+                        ${{ "%.2f"|format(cost.total_cost) }}
+                        {% else %}
+                        <span class="text-warning">Unavailable</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if cost.is_complete %}
+                        <span class="badge bg-success">Complete</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Incomplete</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if cost.ingredient_costs %}
+                        <ul class="mb-0">
+                            {% for ic in cost.ingredient_costs %}
+                            <li>{{ ic.ingredient_name }}: {{ ic.recipe_ingredient_quantity }} {{ ic.recipe_ingredient_unit }} × ${{ "%.4f"|format(ic.cost_per_unit) }}/{{ ic.cost_unit }} = ${{ "%.2f"|format(ic.line_cost) }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <span class="text-muted">No ingredients</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        No recipes found.
+    </div>
+    {% endif %}
+
+    <hr>
+    <div class="d-flex justify-content-between">
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Home</a>
+        <a href="{{ url_for('main.ingredient_costs') }}" class="btn btn-outline-primary">Ingredient Costs</a>
+        <a href="{{ url_for('main.meal_plan_costs_index') }}" class="btn btn-primary">Meal Plan Costs</a>
+    </div>
+</div>
+{% endblock %}

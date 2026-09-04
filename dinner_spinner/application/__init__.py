@@ -35,6 +35,14 @@ from dinner_spinner.application.shopping_list import (
     ShoppingListError,
     UnitSystemNotInitializedError as SLUnitSystemNotInitializedError,
 )
+from dinner_spinner.application.costing import (
+    get_ingredient_costs,
+    get_recipe_costs,
+    get_meal_costs_for_week,
+    get_weekly_cost_summary,
+    CostingError,
+    UnitSystemNotInitializedError as CostingUnitSystemNotInitializedError,
+)
 
 __all__ = [
     "record_acquisition",
@@ -64,4 +72,10 @@ __all__ = [
     "get_shopping_list_for_week",
     "ShoppingListError",
     "SLUnitSystemNotInitializedError",
+    "get_ingredient_costs",
+    "get_recipe_costs",
+    "get_meal_costs_for_week",
+    "get_weekly_cost_summary",
+    "CostingError",
+    "CostingUnitSystemNotInitializedError",
 ]
