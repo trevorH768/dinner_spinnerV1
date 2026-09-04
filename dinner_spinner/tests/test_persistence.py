@@ -387,11 +387,14 @@ def test_recipe_deletion_preserves_mealplans_with_null_recipe(db_session, unit_s
 def test_unit_conversion_same_category(db_session, unit_system_initialized):
     """Same-category conversions work correctly."""
     from dinner_spinner.domain.unit_system import convert
+    from decimal import Decimal
 
-    assert convert(1, "kg", "g") == 1000
-    assert convert(1000, "g", "kg") == 1
-    assert convert(1, "l", "ml") == 1000
-    assert convert(1, "cup", "tbsp") == pytest.approx(15.77, rel=0.01)
+    assert convert(Decimal("1"), "kg", "g") == Decimal("1000")
+    assert convert(Decimal("1000"), "g", "kg") == Decimal("1")
+    assert convert(Decimal("1"), "l", "ml") == Decimal("1000")
+    # cup to tbsp: 1 cup = 236.588 ml, 1 tbsp = 15 ml, so 236.588/15 = 15.7725...
+    result = convert(Decimal("1"), "cup", "tbsp")
+    assert abs(result - Decimal("15.77")) < Decimal("0.01")
 
 
 def test_unit_conversion_cross_category_rejected(db_session, unit_system_initialized):

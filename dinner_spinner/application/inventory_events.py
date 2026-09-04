@@ -48,7 +48,7 @@ class UnitSystemNotInitializedError(InventoryEventError):
     pass
 
 
-def _validate_and_convert_quantity(ingredient: DIIngredient, quantity: float, unit: str) -> float:
+def _validate_and_convert_quantity(ingredient: DIIngredient, quantity: float, unit: str) -> Decimal:
     """Validate and convert quantity to ingredient's unit.
 
     Args:
@@ -64,6 +64,8 @@ def _validate_and_convert_quantity(ingredient: DIIngredient, quantity: float, un
         InvalidUnitError: If unit is invalid or incompatible
         UnitSystemNotInitializedError: If UnitSystem not initialized
     """
+    from decimal import Decimal
+
     if quantity <= 0:
         raise InvalidQuantityError("Quantity must be greater than zero")
 
@@ -88,7 +90,7 @@ def _validate_and_convert_quantity(ingredient: DIIngredient, quantity: float, un
         )
 
     # Convert the incoming quantity to the ingredient's unit
-    return convert(quantity, unit, ingredient.unit)
+    return convert(Decimal(str(quantity)), unit, ingredient.unit)
 
 
 def record_acquisition(
@@ -139,18 +141,19 @@ def record_acquisition(
     if not ingredient:
         raise IngredientNotFoundError(f"Ingredient with id {ingredient_id} not found")
 
-    # Validate and convert quantity
-    converted_qty = _validate_and_convert_quantity(ingredient.to_domain(), quantity, unit)
+    # Validate and convert quantity to ingredient's unit
+    qty_decimal = Decimal(str(quantity))
+    converted_qty = _validate_and_convert_quantity(ingredient.to_domain(), qty_decimal, unit)
 
-    # Create domain ingredient and apply increase
+    # Create domain ingredient and apply increase directly with converted quantity
     domain_ingredient = ingredient.to_domain()
-    domain_ingredient.increase_quantity(quantity, unit)
+    domain_ingredient.quantity += converted_qty
 
     # Create domain acquisition event
     domain_acq = DIAcquisition(
         id=0,  # Will be set by DB
         ingredient_id=ingredient_id,
-        quantity=quantity,
+        quantity=qty_decimal,
         unit=unit.strip(),
         cost=Decimal(str(cost)),
         acquired_at=acquired_at or datetime.utcnow()
@@ -212,14 +215,16 @@ def record_consumption(
     """
     from dinner_persistence.models import Consumption, Ingredient
     from dinner_spinner.domain.consumption import Consumption as DIConsumption
+    from decimal import Decimal
 
     # Load the ingredient
     ingredient = db_session.get(Ingredient, ingredient_id)
     if not ingredient:
         raise IngredientNotFoundError(f"Ingredient with id {ingredient_id} not found")
 
-    # Validate and convert quantity
-    converted_qty = _validate_and_convert_quantity(ingredient.to_domain(), quantity, unit)
+    # Validate and convert quantity to ingredient's unit
+    qty_decimal = Decimal(str(quantity))
+    converted_qty = _validate_and_convert_quantity(ingredient.to_domain(), qty_decimal, unit)
 
     # Check sufficient inventory
     domain_ingredient = ingredient.to_domain()
@@ -229,14 +234,14 @@ def record_consumption(
             f"would result in negative inventory (current: {domain_ingredient.quantity} {domain_ingredient.unit})"
         )
 
-    # Apply decrease
-    domain_ingredient.decrease_quantity(quantity, unit)
+    # Apply decrease directly with converted quantity
+    domain_ingredient.quantity -= converted_qty
 
     # Create domain consumption event
     domain_con = DIConsumption(
         id=0,
         ingredient_id=ingredient_id,
-        quantity=quantity,
+        quantity=qty_decimal,
         unit=unit.strip(),
         consumed_at=consumed_at or datetime.utcnow()
     )
@@ -295,6 +300,7 @@ def record_waste(
     """
     from dinner_persistence.models import Waste, Ingredient
     from dinner_spinner.domain.waste import Waste as DIWaste
+    from decimal import Decimal
 
     # Load the ingredient
     ingredient = db_session.get(Ingredient, ingredient_id)
@@ -302,7 +308,8 @@ def record_waste(
         raise IngredientNotFoundError(f"Ingredient with id {ingredient_id} not found")
 
     # Validate and convert quantity
-    converted_qty = _validate_and_convert_quantity(ingredient.to_domain(), quantity, unit)
+    qty_decimal = Decimal(str(quantity))
+    converted_qty = _validate_and_convert_quantity(ingredient.to_domain(), qty_decimal, unit)
 
     # Check sufficient inventory
     domain_ingredient = ingredient.to_domain()
@@ -312,14 +319,14 @@ def record_waste(
             f"would result in negative inventory (current: {domain_ingredient.quantity} {domain_ingredient.unit})"
         )
 
-    # Apply decrease
-    domain_ingredient.decrease_quantity(quantity, unit)
+    # Apply decrease directly with converted quantity
+    domain_ingredient.quantity -= converted_qty
 
     # Create domain waste event
     domain_was = DIWaste(
         id=0,
         ingredient_id=ingredient_id,
-        quantity=quantity,
+        quantity=qty_decimal,
         unit=unit.strip(),
         wasted_at=wasted_at or datetime.utcnow()
     )

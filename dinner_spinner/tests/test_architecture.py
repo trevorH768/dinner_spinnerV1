@@ -36,6 +36,8 @@ def test_domain_does_not_import_flask():
     import dinner_spinner.domain.meal_plan
     import dinner_spinner.domain.inventory_category
     import dinner_spinner.domain.unit_system
+    import dinner_spinner.domain.demand
+    import dinner_spinner.domain.inventory_requirement
 
     for mod in [
         dinner_spinner.domain.ingredient,
@@ -44,6 +46,8 @@ def test_domain_does_not_import_flask():
         dinner_spinner.domain.meal_plan,
         dinner_spinner.domain.inventory_category,
         dinner_spinner.domain.unit_system,
+        dinner_spinner.domain.demand,
+        dinner_spinner.domain.inventory_requirement,
     ]:
         # Check that Flask is not in the module's globals
         assert "Flask" not in mod.__dict__, f"{mod.__name__} imports Flask"
@@ -64,6 +68,8 @@ def test_domain_does_not_import_presentation():
         dinner_spinner.domain.meal_plan,
         dinner_spinner.domain.inventory_category,
         dinner_spinner.domain.unit_system,
+        dinner_spinner.domain.demand,
+        dinner_spinner.domain.inventory_requirement,
     ]:
         for name in mod.__dict__:
             if "presentation" in str(name).lower():
@@ -82,6 +88,8 @@ def test_domain_does_not_import_http():
         "dinner_spinner.domain.meal_plan",
         "dinner_spinner.domain.inventory_category",
         "dinner_spinner.domain.unit_system",
+        "dinner_spinner.domain.demand",
+        "dinner_spinner.domain.inventory_requirement",
     ]:
         mod = sys.modules[mod_name]
         for attr in dir(mod):
@@ -101,6 +109,8 @@ def test_domain_does_not_import_database_session():
         "dinner_spinner.domain.meal_plan",
         "dinner_spinner.domain.inventory_category",
         "dinner_spinner.domain.unit_system",
+        "dinner_spinner.domain.demand",
+        "dinner_spinner.domain.inventory_requirement",
     ]:
         mod = sys.modules[mod_name]
         for attr in dir(mod):
@@ -120,6 +130,8 @@ def test_domain_does_not_import_external_food_providers():
         "dinner_spinner.domain.meal_plan",
         "dinner_spinner.domain.inventory_category",
         "dinner_spinner.domain.unit_system",
+        "dinner_spinner.domain.demand",
+        "dinner_spinner.domain.inventory_requirement",
     ]:
         mod = sys.modules[mod_name]
         for attr in dir(mod):
@@ -717,21 +729,23 @@ def test_unit_system_rejects_cross_category_conversion():
 def test_unit_system_supports_same_category_conversion():
     """Same-category conversions must work."""
     from dinner_spinner.domain.unit_system import initialize, convert
+    from decimal import Decimal
 
     initialize()
 
     # kg to g
-    assert convert(1, "kg", "g") == 1000
-    assert convert(500, "g", "kg") == 0.5
+    assert convert(Decimal("1"), "kg", "g") == Decimal("1000")
+    assert convert(Decimal("500"), "g", "kg") == Decimal("0.5")
 
     # lb to oz
-    assert convert(1, "lb", "oz") == 16
+    assert convert(Decimal("1"), "lb", "oz") == Decimal("16")
 
     # l to ml
-    assert convert(1, "l", "ml") == 1000
+    assert convert(Decimal("1"), "l", "ml") == Decimal("1000")
 
     # cup to tbsp
-    assert convert(1, "cup", "tbsp") == pytest.approx(15.77, rel=0.01)
+    result = convert(Decimal("1"), "cup", "tbsp")
+    assert abs(result - Decimal("15.77")) < Decimal("0.01")
 
 
 def test_unit_system_no_universal_base_unit():

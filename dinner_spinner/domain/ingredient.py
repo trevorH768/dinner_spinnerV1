@@ -11,6 +11,7 @@ Ingredient represents the household's current inventory state.  The Ingredient
 itself is the inventory holding.  There is no separate Container entity in V1.
 """
 
+from decimal import Decimal
 from dinner_spinner.domain.unit_system import validate_unit, is_initialized, convert, category_of
 
 
@@ -21,7 +22,7 @@ class Ingredient:
     """
 
     def __init__(self, id: int, name: str, inventory_category_id: int | None,
-                 quantity: float, unit: str):
+                 quantity: Decimal, unit: str):
         if not name or not name.strip():
             raise ValueError("Ingredient name is required")
         self.id = id
@@ -63,7 +64,7 @@ class Ingredient:
         return hash((self.id, self.name, self.inventory_category_id,
                      self.quantity, self.unit))
 
-    def increase_quantity(self, quantity: float, unit: str) -> None:
+    def increase_quantity(self, quantity: Decimal, unit: str) -> None:
         """Increase the ingredient's quantity by the given amount in the specified unit.
 
         The quantity is converted to the ingredient's current unit using the UnitSystem
@@ -102,7 +103,7 @@ class Ingredient:
         converted_qty = convert(quantity, unit, self.unit)
         self.quantity += converted_qty
 
-    def decrease_quantity(self, quantity: float, unit: str) -> None:
+    def decrease_quantity(self, quantity: Decimal, unit: str) -> None:
         """Decrease the ingredient's quantity by the given amount in the specified unit.
 
         The quantity is converted to the ingredient's current unit using the UnitSystem
@@ -114,7 +115,7 @@ class Ingredient:
 
         Raises:
             ValueError: If quantity <= 0, unit invalid, unit incompatible,
-                       or resulting quantity would be negative
+                        or resulting quantity would be negative
             RuntimeError: If UnitSystem not initialized
         """
         if quantity <= 0:

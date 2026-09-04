@@ -114,9 +114,7 @@ def calculate_demand(
 
                 # Try to normalize units for aggregation
                 try:
-                    normalized_qty = Decimal(str(convert(
-                        float(scaled_qty), ri.unit, existing_unit
-                    )))
+                    normalized_qty = convert(scaled_qty, ri.unit, existing_unit)
                     demands[ri.ingredient_id] = (
                         existing_qty + normalized_qty,
                         existing_unit,
@@ -132,7 +130,7 @@ def calculate_demand(
             else:
                 # First occurrence of this ingredient
                 demands[ri.ingredient_id] = (
-                    Decimal(str(scaled_qty)),
+                    scaled_qty,
                     ri.unit,
                     ""  # Will be filled in later
                 )
@@ -176,12 +174,16 @@ def calculate_demand_for_week(
     """
     demands = calculate_demand(meal_plans, recipes, recipe_ingredients)
 
-    # Populate ingredient names
+    # Populate ingredient names by creating new instances with the name
+    result = []
     for demand in demands:
         ingredient = ingredients.get(demand.ingredient_id)
-        if ingredient:
-            # Create new instance with name (frozen dataclass, so create new)
-            # Using object.__setattr__ to bypass frozen restriction
-            object.__setattr__(demand, 'ingredient_name', ingredient.name)
+        ingredient_name = ingredient.name if ingredient else ""
+        result.append(IngredientDemand(
+            ingredient_id=demand.ingredient_id,
+            ingredient_name=ingredient_name,
+            quantity=demand.quantity,
+            unit=demand.unit,
+        ))
 
-    return demands
+    return result

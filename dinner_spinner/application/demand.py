@@ -89,18 +89,9 @@ def calculate_weekly_demand(
                 recipe_ingredients_map[ri.recipe_id] = []
             recipe_ingredients_map[ri.recipe_id].append(ri.to_domain())
 
-    # Get all ingredients (for names)
-    ingredient_ids = set()
-    for ri_list in recipe_ingredients_map.values():
-        for ri in ri_list:
-            ingredient_ids.add(ri.ingredient_id)
-
-    ingredients = {}
-    if ingredient_ids:
-        ingredients_db = db_session.query(Ingredient).filter(
-            Ingredient.id.in_(ingredient_ids)
-        ).all()
-        ingredients = {i.id: i.to_domain() for i in ingredients_db}
+    # Get all ingredients for name population (include all ingredients, not just those in recipes)
+    all_ingredients_db = db_session.query(Ingredient).all()
+    all_ingredients = {i.id: i.to_domain() for i in all_ingredients_db}
 
     # Convert meal plans to domain
     meal_plans_domain = [mp.to_domain() for mp in meal_plans]
@@ -111,7 +102,7 @@ def calculate_weekly_demand(
             meal_plans=meal_plans_domain,
             recipes=recipes,
             recipe_ingredients=recipe_ingredients_map,
-            ingredients=ingredients,
+            ingredients=all_ingredients,  # Use all ingredients for name population
         )
         return demands
     except ValueError as e:

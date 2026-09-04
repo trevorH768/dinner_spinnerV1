@@ -115,6 +115,7 @@ class Ingredient(Base):
     def to_domain(self):
         from dinner_spinner.domain.ingredient import Ingredient as DI_Ingredient
         from dinner_spinner.domain.inventory_category import InventoryCategory as DC_IC
+        from decimal import Decimal
         cat = (
             DC_IC(id=self.inventory_category.id, name=self.inventory_category.name)
             if self.inventory_category
@@ -124,7 +125,7 @@ class Ingredient(Base):
             id=self.id,
             name=self.name,
             inventory_category_id=self.inventory_category_id,
-            quantity=self.quantity,
+            quantity=Decimal(str(self.quantity)),
             unit=self.unit,
         )
 

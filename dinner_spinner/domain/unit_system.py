@@ -19,10 +19,13 @@ universal base unit. The conversion system exists to perform valid
 calculations between compatible units.
 """
 
+from decimal import Decimal
+from typing import Union
+
 #: Canonical unit definitions keyed by category name.
 #: Each inner dict maps a canonical unit name to its relative value
 #: with respect to a base unit within its category.
-_UNIT_DEFS: dict[str, dict[str, float]] = {}
+_UNIT_DEFS: dict[str, dict[str, Decimal]] = {}
 
 #: Canonical unit names keyed by category name.
 _UNIT_NAMES: dict[str, list[str]] = {}
@@ -31,7 +34,7 @@ _UNIT_NAMES: dict[str, list[str]] = {}
 _UNIT_TO_CAT: dict[str, str] = {}
 
 #: Mapping from lowercased unit name → relative value (base = 1.0).
-_UNIT_TO_VALUE: dict[str, float] = {}
+_UNIT_TO_VALUE: dict[str, Decimal] = {}
 
 _IS_INITIALIZED = False
 
@@ -45,26 +48,26 @@ def initialize() -> None:
     global _UNIT_DEFS, _UNIT_NAMES, _UNIT_TO_CAT, _UNIT_TO_VALUE, _IS_INITIALIZED
 
     # --- Mass ---
-    mass: dict[str, float] = {
-        "g": 1.0,
-        "kg": 1000.0,
-        "oz": 28.3495,
-        "lb": 453.592,
+    mass: dict[str, Decimal] = {
+        "g": Decimal("1.0"),
+        "kg": Decimal("1000.0"),
+        "oz": Decimal("28.3495"),
+        "lb": Decimal("453.592"),
     }
     # --- Volume ---
-    volume: dict[str, float] = {
-        "ml": 1.0,
-        "l": 1000.0,
-        "cup": 236.588,
-        "tbsp": 15.0,
-        "tsp": 5.0,
+    volume: dict[str, Decimal] = {
+        "ml": Decimal("1.0"),
+        "l": Decimal("1000.0"),
+        "cup": Decimal("236.588"),
+        "tbsp": Decimal("15.0"),
+        "tsp": Decimal("5.0"),
     }
     # --- Count ---
-    count: dict[str, float] = {
-        "each": 1.0,
-        "piece": 1.0,
-        "pieces": 1.0,
-        "count": 1.0,
+    count: dict[str, Decimal] = {
+        "each": Decimal("1.0"),
+        "piece": Decimal("1.0"),
+        "pieces": Decimal("1.0"),
+        "count": Decimal("1.0"),
     }
 
     _UNIT_DEFS = {
@@ -92,6 +95,10 @@ def initialize() -> None:
     _IS_INITIALIZED = True
 
 
+def is_initialized() -> bool:
+    return _IS_INITIALIZED
+
+
 def validate_unit(unit: str) -> bool:
     """Return True if *unit* is a recognized canonical unit."""
     if not _IS_INITIALIZED:
@@ -99,7 +106,7 @@ def validate_unit(unit: str) -> bool:
     return unit.strip().lower() in _UNIT_TO_VALUE
 
 
-def convert(value: float, from_unit: str, to_unit: str) -> float:
+def convert(value: Decimal, from_unit: str, to_unit: str) -> Decimal:
     """Convert *value* from *from_unit* to *to_unit*.
 
     Only same-category conversions are supported.

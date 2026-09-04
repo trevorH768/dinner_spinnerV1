@@ -110,7 +110,7 @@ def _convert_quantity_to_unit(quantity: Decimal, from_unit: str, to_unit: str) -
             "different measurement categories (requires density information)"
         )
     
-    return Decimal(str(convert(float(quantity), from_unit, to_unit)))
+    return convert(quantity, from_unit, to_unit)
 
 
 def _aggregate_compatible_quantities(qty1: Decimal, unit1: str, qty2: Decimal, unit2: str) -> tuple[Decimal, str]:
